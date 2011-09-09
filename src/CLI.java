@@ -1,5 +1,7 @@
 import java.io.IOException;
 import java.math.BigInteger;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.Arrays;
 import java.util.Properties;
 
@@ -15,7 +17,6 @@ import org.apache.commons.cli.ParseException;
 import org.apache.commons.cli.PosixParser;
 
 class CLI implements MessageListener {
-
 
 	NetworkInterface nif;
 	byte[] src_mac;
@@ -37,8 +38,9 @@ class CLI implements MessageListener {
 	private Options createOptions() {
 		// create the Options
 
-		options.addOption(OptionBuilder.withLongOpt("conf").withArgName(
-				"filename").hasArg().withDescription("使用配置文件的参数").create("c"));
+		options.addOption(OptionBuilder.withLongOpt("conf")
+				.withArgName("filename").hasArg().withDescription("使用配置文件的参数")
+				.create("c"));
 		// 读取配置文件
 		options.addOption("i", "intetface", true, "网卡");
 		options.addOption("l", "list", false, "输出网卡列表");
@@ -47,7 +49,8 @@ class CLI implements MessageListener {
 		options.addOption("u", "username", true, "用户名");
 		options.addOption("p", "password", true, "密码,默认123456");
 		options.addOption("svr", "serverip", true, "外网登陆服务器ip 默认自动搜索");// 为10.5.2.3
-		options.addOption("ds", "dhcpscript", true, "内网拨号成功后自定义的自动获取IP脚本命令,Windows下默认为\"ipconfig /renew *\",Linux默认为\"dhcpc *\" ");
+		options.addOption("ds", "dhcpscript", true,
+				"内网拨号成功后自定义的自动获取IP脚本命令,Windows下默认为\"ipconfig /renew *\",Linux默认为\"dhcpc *\" ");
 		options.addOption("s", "srcmac", true, "指定源MAC地址，比如你用别人的账号上网");
 		options.addOption("d", "dstmac", true,
 				"指定目的MAC地址，默认为01-80-C2-00-00-03，一般不用指定");
@@ -144,14 +147,24 @@ class CLI implements MessageListener {
 		// if (args[1].equals("802on")) {;
 
 		switch (type) {
-		case 'o':
-			// udploop
-			break;
 		case 'i':
 			innerNetwork in = new innerNetwork(nif, src_mac, dst_mac, UserName,
 					PassWord);
 			in.addMessageListener(this);
 			in.login();
+			break;
+		case 'o':
+			InetAddress address;
+			try {
+				address = InetAddress.getByAddress(new byte[] { 10, 5, 2, 3 });
+				outerNetwork out = new outerNetwork(UserName, PassWord,
+						address, -1);
+				out.addMessageListener(this);
+				out.login();
+			} catch (UnknownHostException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
 			break;
 		default:
 			break;

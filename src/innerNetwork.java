@@ -90,6 +90,8 @@ public class innerNetwork implements MessageAdapter, PacketReceiver {
 				break;
 			case _802dot1XPacket.EAP_CODE_SUCCESS:
 				ml.ReciveMessage(new Message(Message.SUCCESS, "内网登陆成功!"));
+				//增加断线重拨 ...
+				
 				pc.breakLoop();
 				break;
 			}
