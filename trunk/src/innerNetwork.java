@@ -8,28 +8,25 @@ import jpcap.PacketReceiver;
 import jpcap.packet.Packet;
 
 public class innerNetwork implements MessageAdapter, PacketReceiver {
-	NetworkInterface nif;
+	/*NetworkInterface nif;
 	byte[] src_mac;
 	byte[] dst_mac;
 	String UserName;
 	String PassWord;
-
+*/
+	LoginInfo logif;
+	
 	JpcapCaptor pc;
 	JpcapSender ps;
 
 	MessageListener ml;
 
-	public innerNetwork(NetworkInterface nif, byte[] src_mac, byte[] dst_mac,
-			String UserName, String PassWord) {
+	public innerNetwork(LoginInfo logif) {
 		// TODO Auto-generated constructor stub
-		this.nif = nif;
-		this.dst_mac = dst_mac;
-		this.src_mac = src_mac;
-		this.UserName = UserName;
-		this.PassWord = PassWord;
+		this.logif = logif;
 
 		try {
-			pc = JpcapCaptor.openDevice(nif, 120, true, 250);
+			pc = JpcapCaptor.openDevice(logif.nif, 120, true, 250);
 
 			pc.setFilter("ether dst 01:80:c2:00:00:03 and ether proto 0x888e",
 					false);
@@ -45,7 +42,7 @@ public class innerNetwork implements MessageAdapter, PacketReceiver {
 
 	public void login() {
 
-		_802dot1XPacket start = new _802dot1XPacket(src_mac,
+		_802dot1XPacket start = new _802dot1XPacket(logif.src_mac,
 				_802dot1XPacket.EAPOL_TYPE_START);
 
 		ps.sendPacket(start);
@@ -68,7 +65,7 @@ public class innerNetwork implements MessageAdapter, PacketReceiver {
 
 				switch (tmp.getEAPType()) {
 				case _802dot1XPacket.EAP_REQUEST_IDENTITY:
-					tmp.ConvertToIdentityResponse(UserName, src_mac);
+					tmp.ConvertToIdentityResponse(logif.UserName, logif.src_mac);
 					ps.sendPacket(tmp);
 					ml.ReciveMessage(new Message(Message.MESSAGE, "发送用户名"));
 					break;
@@ -76,8 +73,8 @@ public class innerNetwork implements MessageAdapter, PacketReceiver {
 					ml.ReciveMessage(new Message(Message.MESSAGE, "notic"));
 					break;
 				case _802dot1XPacket.EAP_REQUEST_MD5_CHALLENGE:
-					tmp.ConvertToMD5ChallengeResponse(UserName, PassWord,
-							src_mac);
+					tmp.ConvertToMD5ChallengeResponse(logif.UserName, logif.PassWord,
+							logif.src_mac);
 					ps.sendPacket(tmp);
 					ml.ReciveMessage(new Message(Message.MESSAGE, "发送密码"));
 					break;
@@ -103,7 +100,7 @@ public class innerNetwork implements MessageAdapter, PacketReceiver {
 	// /////////////////////////////////////////////////////////////////
 
 	public boolean logoff() {
-		_802dot1XPacket start = new _802dot1XPacket(src_mac,
+		_802dot1XPacket start = new _802dot1XPacket(logif.src_mac,
 				_802dot1XPacket.EAPOL_TYPE_START);
 
 		ps.sendPacket(start);
