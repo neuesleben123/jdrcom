@@ -5,54 +5,6 @@ import java.net.InetAddress;
 import java.net.SocketException;
 import java.security.NoSuchAlgorithmException;
 
-/*## basic network parameters
- self.BUFFER = 1024
- self.server_brand = 'Drco'
- self.ifname = self.get_ifname()
- self.md5_tail = '\x14\x00\x07\x0b'
- self.host_ip = self.get_ip_addr()
- self.host_ip_dec = socket.inet_ntoa(self.host_ip)
- self.mac_addr = self.get_mac_addr()
-
- ## Packet ID
- self.host_packet_id = {
- '_login_request_'   :'\x01\x10',
- '_login_auth_'      :'\x03\x01',
- '_logout_request_'  :'\x01\x0e',
- '_logout_auth_'     :'\x06\x01',
- '_passwd_request_'  :'\x01\x0d',
- '_new_passwd_'      :'\x09\x01',
- '_alive_40_client_' :'\x07',
- '_alive_38_client_' :'\xff',
- '_alive_4_client_'  :'\xfe',
- }
- self.server_packet_id = {
- '\x02\x10'    :'_login_response_',
- '\x02\x0e'    :'_logout_response_',
- '\x02\x0d'    :'_passwd_response_',
- '\x04\x00'    :'_success_',
- '\x05\x00'    :'_failure_',
- '\x07'        :'_alive_40_server_',
- '\x07\x01\x10':'_alive_38_server_',
- '\x4d\x26'    :'_alive_4_server_',
- '\x4d\x38'    :'_Serv_Info_',
- '\x4d\x3a'    :'_Notice_',
- }
-
- ## parameters used in keep_alive
- self.alive_account0 = 0x1a
- self.alive_account1 = 0x2e
- self.server_ack_40 = '\x12\x56\xd3\x03'
-
- ## local address array
- self.local_addr = []
- self.local_mask = []
-
- self.timer_38 = 200
- self.timer_40 = 160
- self.module_auth = 'non-AUTH'
-
- */
 
 public class outerNetwork implements MessageAdapter {
 	private static final int BEGIN_LOGIN_REQUEST_LEN = 20;
@@ -140,12 +92,14 @@ public class outerNetwork implements MessageAdapter {
 					return false;
 				}
 
-				byte[] service_identifier = new byte[] { (byte) 0xdb, 0x5b,
-						0x01, 0x00 };
-
-				/*System.arraycopy(recv_packet.getData(), 4, service_identifier,
+				byte[] service_identifier = new byte[4];
+				System.arraycopy(recv_packet.getData(), 4, service_identifier,
 						0, 4);
-*/
+
+				/*
+				 * service_identifier = new byte[] { (byte) 0x8a, 0x5f, 0x01,
+				 * 0x00 };
+				 */
 				// ////////////////////////////////////////////////////////////////////////
 				// 发送第二个包
 				// ////////////////////////////////////////////////////////////////////////
@@ -167,7 +121,7 @@ public class outerNetwork implements MessageAdapter {
 				byte[] username_zero = new byte[36 + 2];
 				System.arraycopy(logif.UserName.getBytes(), 0, username_zero,
 						0, logif.UserName.length());
-				//username_zero[36] = 0x09;
+				// username_zero[36] = 0x09;
 				username_zero[36] = 0x20;
 				username_zero[37] = 0x01;
 
@@ -179,9 +133,9 @@ public class outerNetwork implements MessageAdapter {
 
 				// // the second MD5 calculation
 				md5_content = new byte[] { 0x01 };
-				md5_content=arraycat(md5_content, logif.PassWord.getBytes());
-				md5_content=arraycat(md5_content, service_identifier);
-				md5_content=arraycat(md5_content, new byte[4]);
+				md5_content = arraycat(md5_content, logif.PassWord.getBytes());
+				md5_content = arraycat(md5_content, service_identifier);
+				md5_content = arraycat(md5_content, new byte[4]);
 
 				byte[] login_b_md5 = md5_key(md5_content);
 				byte[] nic_ip_zero = new byte[12];
@@ -200,7 +154,9 @@ public class outerNetwork implements MessageAdapter {
 				md5_content = arraycat(data_front, new byte[] { 0x14, 0x00,
 						0x07, 0x0b }); // md5_tail
 				byte[] login_c_md5 = new byte[8];
-				System.arraycopy(md5_key(md5_content), 0, login_c_md5, 0, 8);
+
+				byte[] c_md5 = md5_key(md5_content);
+				System.arraycopy(c_md5, 0, login_c_md5, 0, 8);
 
 				// // Add host DNS address
 				byte[] host_name = new byte[32];
@@ -241,8 +197,10 @@ public class outerNetwork implements MessageAdapter {
 				// byte[] unknown = { 0x03, 0x00, 0x02, 0x0C, 0x00, (byte) 0xF3,
 				// 0x31,(byte) 0x9F, 0x01, 0x00 };
 				// 第一个字节似乎是版本
-				byte[] unknown = { 0x09, 0x00, 0x02, 0x0C, 0x00, (byte) 0xF1,
-						0x76, (byte) 0x24, 0x00, 0x00 };
+				byte[] unknown = { 0x09, 0x00, 0x02, 0x0C,/* { */0x00, 0x00,
+						0x00, 0x00/* } */, 0x00, 0x00 };
+
+				System.arraycopy(c_md5, 10, unknown, 4, 4);
 
 				// // FIXME: not valid for "drcom v3.72 u31 2227 build"
 				// send_data=data_front+login_c_md5+chr(ip_dog)+'\x00'*4+host_info+zero3+\
@@ -255,8 +213,11 @@ public class outerNetwork implements MessageAdapter {
 				send_data = arraycat(send_data, zero3);
 				send_data = arraycat(send_data, unknown);
 				send_data = arraycat(send_data, logif.src_mac);
-				send_data = arraycat(send_data, new byte[] { 0x00, 0x00 }); // auto_logout=0;	// multicast_mode=0
-				send_data = arraycat(send_data, new byte[] { (byte) 0xf9, (byte) 0xf7 });
+				send_data = arraycat(send_data, new byte[] { 0x00, 0x00 }); // auto_logout=0;
+																			// //
+																			// multicast_mode=0
+				send_data = arraycat(send_data, new byte[] { (byte) 0xf9,
+						(byte) 0xf7 });
 				send_packet = new DatagramPacket(send_data, send_data.length,
 						logif.ServerAddress, port);
 				socket.send(send_packet);
@@ -298,12 +259,17 @@ public class outerNetwork implements MessageAdapter {
 								"费用超支，不能上网！"));
 						return false;
 					}
-					// == 0x04 : success
+					// other 0x05 error
 					else {
 						ml.ReciveMessage(new Message(Message.ERROR,
 								"登录失败。发出登录认证包，可能服务器没有通过验证，请查看是否需要升级客户端程序!"));
 						return false;
 					}
+				}
+				// == 0x04 : success
+				else {
+					ml.ReciveMessage(new Message(Message.MESSAGE, "登录成功！"));
+					return true;
 				}
 			}
 
