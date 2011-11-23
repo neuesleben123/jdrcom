@@ -80,9 +80,9 @@ class CLI implements MessageListener {
 
 			if (line.hasOption('l')) {
 				System.out
-						.printf("如提示“无法打开共享对象文件: 没有那个文件或目录”等错误，请检查是否以管理员权限运行本程序、或网卡是否已启用!");
+						.println("如提示“无法打开共享对象文件: 没有那个文件或目录”等错误，请检查是否以管理员权限运行本程序、或网卡是否已启用!\n\n\n");
 				if (JpcapCaptor.getDeviceList().length == 0)
-					System.out.printf("没有找到网卡！" + "请检查是否以管理员权限运行本程序、或网卡是否已启用!");
+					System.out.println("没有找到网卡！" + "请检查是否以管理员权限运行本程序、或网卡是否已启用!");
 				for (NetworkInterface n : JpcapCaptor.getDeviceList()) {
 					System.out.printf("网卡名称:%s\n描述:%s\n\n", n.name,
 							n.description);

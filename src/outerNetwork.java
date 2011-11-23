@@ -214,7 +214,7 @@ public class outerNetwork implements MessageAdapter {
 		try {
 			socket.send(send_packet);
 		} catch (IOException e) {
-			// e.printStackTrace();
+			e.printStackTrace();
 			ml.ReciveMessage(new Message(Message.ERROR, "发送Start Request失败！"));
 			return false;
 		}
@@ -262,6 +262,7 @@ public class outerNetwork implements MessageAdapter {
 		try {
 			socket.send(send_packet);
 		} catch (IOException e) {
+			e.printStackTrace();
 			ml.ReciveMessage(new Message(Message.MESSAGE, "发送心跳包失败"));
 		}
 		return true;
@@ -385,7 +386,7 @@ public class outerNetwork implements MessageAdapter {
 		try {
 			socket.send(send_packet);
 		} catch (IOException e) {
-			// e.printStackTrace();
+			e.printStackTrace();
 			ml.ReciveMessage(new Message(Message.ERROR, "发送 Login Auth失败！"));
 			return false;
 		}
@@ -423,7 +424,7 @@ public class outerNetwork implements MessageAdapter {
 		try {
 			socket.send(send_packet);
 		} catch (IOException e) {
-			// e.printStackTrace();
+			e.printStackTrace();
 			ml.ReciveMessage(new Message(Message.ERROR, "发送 Logout Auth失败！"));
 			return false;
 		}
