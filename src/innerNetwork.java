@@ -1,9 +1,7 @@
 import java.io.IOException;
-import java.util.Properties;
 
 import jpcap.JpcapCaptor;
 import jpcap.JpcapSender;
-import jpcap.NetworkInterface;
 import jpcap.PacketReceiver;
 import jpcap.packet.Packet;
 
@@ -82,7 +80,7 @@ public class innerNetwork implements MessageAdapter, PacketReceiver {
 				break;
 			case _802dot1XPacket.EAP_CODE_FAILURE:
 				ml.ReciveMessage(new Message(Message.ERROR,
-						"内网登陆失败!请检查用户名、密码是否正确"));
+						"内网登陆失败!请检查用户名、密码、MAC是否正确,且没有他人登陆此账号"));
 				pc.breakLoop();
 				break;
 			case _802dot1XPacket.EAP_CODE_SUCCESS:

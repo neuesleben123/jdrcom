@@ -1,6 +1,7 @@
 import java.io.IOException;
 import java.math.BigInteger;
 import java.net.InetAddress;
+import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.util.Arrays;
 import java.util.Properties;
@@ -18,13 +19,8 @@ import org.apache.commons.cli.PosixParser;
 
 class CLI implements MessageListener {
 
-	LoginInfo logif=new LoginInfo();
+	LoginInfo logif = new LoginInfo();
 
-	/*NetworkInterface nif;
-	byte[] src_mac;
-	byte[] dst_mac;
-	String UserName;
-	String PassWord;*/
 	char type = 'i';
 	Options options = new Options();
 
@@ -33,7 +29,8 @@ class CLI implements MessageListener {
 	}
 
 	private void printHelp(Options options) {
-		System.out.println("\n因学校无IPV6环境，无法测试，本软件暂不支持IPV6！如果你想帮助作者完善请访问 https://code.google.com/p/jdrcom/\n");
+		System.out
+				.println("\n因学校无IPV6环境，无法测试，本软件暂不支持IPV6！如果你想帮助作者完善请访问 https://code.google.com/p/jdrcom/\n");
 		HelpFormatter formatter = new HelpFormatter();
 		formatter.printHelp("drcom", options);
 	}
@@ -52,7 +49,10 @@ class CLI implements MessageListener {
 		options.addOption("u", "username", true, "用户名");
 		options.addOption("p", "password", true, "密码,默认123456");
 		options.addOption("svr", "serverip", true, "外网登陆服务器ip 默认自动搜索");// 为10.5.2.3
-		options.addOption("ds", "dhcpscript", true,
+		options.addOption(
+				"ds",
+				"dhcpscript",
+				true,
 				"内网拨号成功后自定义的自动获取IP脚本命令\nWindows下默认为\"ipconfig /renew *\"\nLinux默认为\"dhcpc *(待考虑)\" ");
 		options.addOption("s", "srcmac", true, "指定源MAC地址，比如你用别人的账号上网");
 		options.addOption("d", "dstmac", true,
@@ -79,6 +79,8 @@ class CLI implements MessageListener {
 			}
 
 			if (line.hasOption('l')) {
+				System.out
+						.printf("如提示“无法打开共享对象文件: 没有那个文件或目录”等错误，请检查是否以管理员权限运行本程序、或网卡是否已启用!");
 				if (JpcapCaptor.getDeviceList().length == 0)
 					System.out.printf("没有找到网卡！" + "请检查是否以管理员权限运行本程序、或网卡是否已启用!");
 				for (NetworkInterface n : JpcapCaptor.getDeviceList()) {
@@ -107,6 +109,18 @@ class CLI implements MessageListener {
 				}
 			}
 
+			if (line.hasOption("svr")) {
+				try {
+					logif.ServerAddress = InetAddress.getByName(line
+							.getOptionValue("svr"));
+				} catch (UnknownHostException e) {
+					// TODO Auto-generated catch block
+					System.out.println("服务器ip格式错误！");
+					return false;
+					// e.printStackTrace();
+				}
+			}
+
 			if (line.hasOption('s')) {
 				String strmac = line.getOptionValue('s').replaceAll(
 						"[^A-Za-z0-9]", "");
@@ -114,9 +128,16 @@ class CLI implements MessageListener {
 					System.out.println("不合法的源MAC地址！");
 					return false;
 				}
-				logif.src_mac = new BigInteger(strmac, 16).toByteArray();
-				logif.src_mac = Arrays.copyOfRange(logif.src_mac, logif.src_mac.length - 6,
-						logif.src_mac.length);
+				logif.src_mac = new byte[6];
+
+				long mac = Long.parseLong(strmac, 16);
+				logif.src_mac[5] = (byte) (mac & 0xff);
+				logif.src_mac[4] = (byte) (mac >> 8 & 0xff);
+				logif.src_mac[3] = (byte) (mac >> 16 & 0xff);
+				logif.src_mac[2] = (byte) (mac >> 24 & 0xff);
+				logif.src_mac[1] = (byte) (mac >> 32 & 0xff);
+				logif.src_mac[0] = (byte) (mac >> 40 & 0xff);
+
 			} else {
 				logif.src_mac = logif.nif.mac_address;
 			}
@@ -149,6 +170,10 @@ class CLI implements MessageListener {
 
 		// if (args[1].equals("802on")) {;
 
+		Properties props = System.getProperties();
+		if (props.getProperty("os.name").contains("indows"))
+			logif.os = "windows";
+
 		switch (type) {
 		case 'i':
 			innerNetwork in = new innerNetwork(logif);
@@ -156,16 +181,10 @@ class CLI implements MessageListener {
 			in.login();
 			break;
 		case 'o':
-			InetAddress address;
-			try {
-				address = InetAddress.getByAddress(new byte[] { 10, 5, 2, 3 });
-				outerNetwork out = new outerNetwork(logif,-1);
-				out.addMessageListener(this);
-				out.login();
-			} catch (UnknownHostException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
+			outerNetwork out = new outerNetwork(logif);
+			out.addMessageListener(this);
+			out.login();
+			out.logoff();
 			break;
 		default:
 			break;
@@ -180,16 +199,17 @@ class CLI implements MessageListener {
 		System.out.println(msg.msg);
 
 		if (msg.type == Message.SUCCESS)
-			try {
-				Properties props = System.getProperties();
-				if (props.getProperty("os.name").contains("indows")) {
-					System.out.println("获取IP地址...");
-					Runtime.getRuntime().exec("ipconfig /renew *");
-					System.out.println("如不能上网请检查网卡是否设置为自动获取IP，DNS是否正确");
-				}
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
+			;
+		// if (logif.os.equals("windows")) {
+		// System.out.println("获取IP地址...");
+		// try {
+		// Runtime.getRuntime().exec("ipconfig /renew *");
+		// } catch (IOException e) {
+		// // TODO Auto-generated catch block
+		// e.printStackTrace();
+		// }
+		// System.out.println("如不能上网请检查网卡是否设置为自动获取IP，DNS是否正确");
+		// }
+
 	}
 }
