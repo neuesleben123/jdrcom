@@ -1,21 +1,9 @@
 import java.awt.EventQueue;
 
-import javax.swing.JFrame;
 import javax.swing.JButton;
-import java.awt.BorderLayout;
-import javax.swing.JTabbedPane;
-import javax.swing.JSplitPane;
-import javax.swing.JInternalFrame;
-import javax.swing.JPanel;
-import java.awt.event.ActionListener;
-import java.awt.event.ActionEvent;
-import javax.swing.BoxLayout;
+import javax.swing.JFrame;
 import javax.swing.JTextField;
-import com.jgoodies.forms.layout.FormLayout;
-import com.jgoodies.forms.layout.ColumnSpec;
-import com.jgoodies.forms.layout.RowSpec;
-import com.jgoodies.forms.factories.FormFactory;
-import java.awt.FlowLayout;
+
 import net.miginfocom.swing.MigLayout;
 
 

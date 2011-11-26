@@ -1,9 +1,8 @@
+import java.awt.event.KeyAdapter;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.net.InetAddress;
-import java.net.SocketException;
 import java.net.UnknownHostException;
-import java.util.Arrays;
 import java.util.Properties;
 
 import jpcap.JpcapCaptor;
@@ -17,22 +16,29 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.apache.commons.cli.PosixParser;
 
-class CLI implements MessageListener {
+class CLI extends KeyAdapter implements MessageListener {
 
 	LoginInfo logif = new LoginInfo();
 
-	char type = 'i';
+	enum Type {
+		inner, outer
+	};
+
+	Type type = Type.inner;
+
+	enum OS {
+		Windows, Linux, Mac
+	};
+
 	Options options = new Options();
-
-	public CLI() {
-
-	}
+	String cmdLineSyntax = "java -jar jdrcom.jar [-OPTIONS]"
+			+ "\njava版的dr.com的开源拨号客户端\n";
 
 	private void printHelp(Options options) {
 		System.out
 				.println("\n因学校无IPV6环境，无法测试，本软件暂不支持IPV6！如果你想帮助作者完善请访问 https://code.google.com/p/jdrcom/\n");
 		HelpFormatter formatter = new HelpFormatter();
-		formatter.printHelp("drcom", options);
+		formatter.printHelp(cmdLineSyntax, options);
 	}
 
 	private Options createOptions() {
@@ -63,7 +69,8 @@ class CLI implements MessageListener {
 		return options;
 	}
 
-	public boolean run(String[] args) {
+	private boolean args_Handler(String[] args) {
+		// TODO Auto-generated method stub
 
 		// create the command line parser
 		CommandLineParser parser = new PosixParser();
@@ -80,9 +87,10 @@ class CLI implements MessageListener {
 
 			if (line.hasOption('l')) {
 				System.out
-						.println("如提示“无法打开共享对象文件: 没有那个文件或目录”等错误，请检查是否以管理员权限运行本程序、或网卡是否已启用!\n\n\n");
+						.println("如提示“无法打开共享对象文件: 没有那个文件或目录”等错误，请检查是否以管理员权限运行本程序、或网卡是否已启用!\n");
 				if (JpcapCaptor.getDeviceList().length == 0)
-					System.out.println("没有找到网卡！" + "请检查是否以管理员权限运行本程序、或网卡是否已启用!");
+					System.out
+							.println("没有找到网卡！" + "请检查是否以管理员权限运行本程序、或网卡是否已启用!");
 				for (NetworkInterface n : JpcapCaptor.getDeviceList()) {
 					System.out.printf("网卡名称:%s\n描述:%s\n\n", n.name,
 							n.description);
@@ -104,8 +112,10 @@ class CLI implements MessageListener {
 			}
 
 			if (line.hasOption('t')) {
-				if (line.getOptionValue('t').matches("^o$|^outer$|^i$|^inner$")) {
-					type = line.getOptionValue('t').charAt(0);
+				if (line.getOptionValue('t').matches("^i$|^inner$")) {
+					type = Type.inner;
+				} else if (line.getOptionValue('t').matches("^o$|^outer$")) {
+					type = Type.outer;
 				}
 			}
 
@@ -174,17 +184,43 @@ class CLI implements MessageListener {
 		if (props.getProperty("os.name").contains("indows"))
 			logif.os = "windows";
 
+		return true;
+	}
+
+	public boolean run(String[] args) {
+
+		args_Handler(args);
+
 		switch (type) {
-		case 'i':
+		case inner:
 			innerNetwork in = new innerNetwork(logif);
 			in.addMessageListener(this);
-			in.login();
+			in.Start();
 			break;
-		case 'o':
-			outerNetwork out = new outerNetwork(logif);
+		case outer:
+			outerNetwork out = null;
+			try {
+				out = new outerNetwork(logif);
+			} catch (Exception e1) {
+				// TODO Auto-generated catch block
+				System.out.println("端口绑定失败，请检查是否有其他客户端在运行！");
+				break;
+			}
+
 			out.addMessageListener(this);
-			out.login();
-			out.logoff();
+			// out.login();
+			Thread thd = new Thread(out);
+			thd.start();
+			try {
+
+				while (thd.isAlive() && System.in.read() != 'q')
+					;//ONLINE
+				
+				out.state = outerNetwork.State.STOP;
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
 			break;
 		default:
 			break;
@@ -196,20 +232,21 @@ class CLI implements MessageListener {
 	@Override
 	public void ReciveMessage(Message msg) {
 		// TODO Auto-generated method stub
-		System.out.println(msg.msg);
+		System.out.print(msg.msg);
 
 		if (msg.type == Message.SUCCESS)
-			;
-		// if (logif.os.equals("windows")) {
-		// System.out.println("获取IP地址...");
-		// try {
-		// Runtime.getRuntime().exec("ipconfig /renew *");
-		// } catch (IOException e) {
-		// // TODO Auto-generated catch block
-		// e.printStackTrace();
-		// }
-		// System.out.println("如不能上网请检查网卡是否设置为自动获取IP，DNS是否正确");
-		// }
+			if (logif.os.equals("windows")) {
+				System.out.println("获取IP地址...(ipconfig /renew *)");
+				try {
+					Runtime.getRuntime().exec("ipconfig /renew *");
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+				System.out.println("如不能上网请检查网卡是否设置为自动获取IP，DNS是否正确");
+			} else {
+				System.out.println("如采用DHCP，请运行DHCP客户端获取IP地址！");
+			}
 
 	}
 }
