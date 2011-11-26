@@ -1,8 +1,6 @@
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
@@ -13,13 +11,13 @@ import java.util.TimerTask;
 import jpcap.JpcapCaptor;
 import jpcap.NetworkInterface;
 
-public class outerNetwork implements MessageAdapter {
+public class outerNetwork implements MessageAdapter, Runnable {
 
 	enum State {
-		OFFLINE, ONLINE
+		START, LOGIN, ONLINE, STOP, LOGOFF
 	};
 
-	State state = State.OFFLINE;
+	public State state = State.START;
 
 	private LoginInfo logif = null;
 	private MessageListener ml = null;
@@ -28,107 +26,145 @@ public class outerNetwork implements MessageAdapter {
 	private byte[] login_a_md5 = null;
 	private byte[] auth_info = new byte[16];
 
-	Timer alive = new Timer();
+	Timer alive = new Timer(false);
 
-	private InetAddress localhost = null;
 	private DatagramSocket socket = null;
 	private byte recv_data[] = new byte[256];
 	private byte send_data[] = null;
 
-	public outerNetwork(LoginInfo logif)  {
-
+	public outerNetwork(LoginInfo logif) throws Exception {
 		this.logif = logif;
-
-	}
-
-	public boolean login() {
 
 		for (NetworkInterface n : JpcapCaptor.getDeviceList()) {
 			if (n.name.equals(logif.nif.name)) {
 				logif.nif = n;
 				try {
-					InetSocketAddress isa = new InetSocketAddress(
-							n.addresses[0].address.getHostAddress(),
-							logif.port);
-
-					socket = new DatagramSocket(isa);
+					socket = new DatagramSocket(logif.port,
+							n.addresses[0].address);
+					socket.setSoTimeout(5000);
 				} catch (SocketException e) {
 					// TODO Auto-generated catch block
-					ml.ReciveMessage(new Message(Message.ERROR,
-							"端口绑定失败，请检查是否有其他客户端在运行！"));
+					throw new Exception(e);
 				}
 				break;
 			}
 		}
+
+	}
+
+	public boolean Start() {
+		boolean ret = true;
+		int RetryTimes = 0;
 
 		DatagramPacket recv_packet = new DatagramPacket(recv_data,
 				recv_data.length);
 
-		if (!Send_Start_Request())
-			return false;
+		labwhile: while (true) {
 
-		while (true) {
+			switch (state) {
+			case START:
+				state = State.LOGIN;
+				RetryTimes = 0;
+				if (!Send_Start_Request()) {
+					ret = false;
+					break labwhile;
+				}
+				break;
+			case STOP:
+				alive.cancel();
+				state = State.LOGOFF;
+				RetryTimes = 0;
+				Send_Start_Request();
+				break;
+			}
+
 			try {
-				localhost = InetAddress.getLocalHost();
-
-				socket.setSoTimeout(5000);
 				socket.receive(recv_packet);
 			} catch (UnknownHostException e) {
 				// e.printStackTrace();
-				ml.ReciveMessage(new Message(Message.ERROR, "获取本机IP失败！"));
-				return false;
+				ml.ReciveMessage(new Message(Message.ERROR, "获取本机IP失败！\n"));
+				ret = false;
+				break labwhile;
 			} catch (SocketTimeoutException e) {
-				if (state != State.ONLINE) {
+				switch (state) {
+				case LOGIN:
 					// TODO:搜索第二服务器
-					ml.ReciveMessage(new Message(Message.ERROR,
-							"登录超时。服务器响应超时！(是否指定了错误的服务器IP？)"));
-					return false;
-				} else {
+					RetryTimes++;
+					if (RetryTimes < 4) {
+						ml.ReciveMessage(new Message(Message.MESSAGE,
+								"登陆超时，服务器响应超时！重试" + RetryTimes + "\n"));
+					} else {
+						ml.ReciveMessage(new Message(Message.ERROR,
+								"登陆超时，服务器响应超时！(是否指定了错误的服务器IP？)\n"));
+						ret = false;
+						break labwhile;
+					}
+					break;
+				case LOGOFF:
+					RetryTimes++;
+					if (RetryTimes < 4) {
+						ml.ReciveMessage(new Message(Message.MESSAGE,
+								"注销超时，服务器响应超时！重试" + RetryTimes + "\n"));
+						break;
+					} else {
+						ml.ReciveMessage(new Message(Message.ERROR,
+								"注销超时，服务器响应超时！重试次数过!指定下线参数重新运行\n"));
+						ret = false;
+						break labwhile;
+					}
+				default:
 					continue;
 				}
 			} catch (IOException e) {
-				ml.ReciveMessage(new Message(Message.ERROR, "与服务器通讯时发生错误"));
 				e.printStackTrace();
+				ml.ReciveMessage(new Message(Message.ERROR, "与服务器通讯时发生错误\n"));
 			}
-
-			logif.ServerAddress = recv_packet.getAddress(); // 自动获取服务器IP
 
 			switch (recv_data[0]) {
 			case 0x02:
+				logif.ServerAddress = recv_packet.getAddress(); // 自动获取服务器IP
 				Handle_Start_Response(recv_data);
-				Send_Login_Auth(recv_data);
+				if (state == State.LOGIN)
+					Send_Login_Auth(recv_data);
+				else
+					Send_Logout_Auth(recv_data);
 				break;
 			case 0x04:
-				Handle_Success(recv_data);
+				if (state == State.LOGIN)
+					Handle_Success(recv_data);
+				else
+					ml.ReciveMessage(new Message(Message.MESSAGE, "注销成功！\n"));
 				break;
 			case 0x05:
 				Handle_Failure(recv_data);
-				return false;
+				ret = false;
+				break labwhile;
+			case 0x07: // alive response
+				break;
 			case 0x4d:
 				if (recv_data[1] == 0x25) {
-					ml.ReciveMessage(new Message(Message.ERROR, "费用超支，不能上网！"));
-					return false;
+					ml.ReciveMessage(new Message(Message.ERROR, "费用超支，不能上网！\n"));
+					ret = false;
+					break labwhile;
 				}
 				break;
 			default:
+				ml.ReciveMessage(new Message(Message.MESSAGE, "收到未知包，忽略\n"));
 				break;
 			}
 		}
-	}
-
-	public boolean logoff() {
-		alive.cancel();
-		return false;
+		return ret;
 	}
 
 	private boolean Handle_Start_Response(byte[] recv_data) {
 		// 检查
 		if (recv_data[0] != 0x02) {
-			ml.ReciveMessage(new Message(Message.ERROR, "登录失败。发出连接请求，服务器响应错误！"));
+			ml.ReciveMessage(new Message(Message.ERROR,
+					"登录失败。发出连接请求，服务器响应错误！\n"));
 			return false;
 		}
 
-		ml.ReciveMessage(new Message(Message.MESSAGE, "收到同意连接"));
+		ml.ReciveMessage(new Message(Message.MESSAGE, "收到同意连接\n"));
 		service_identifier = new byte[4];
 		System.arraycopy(recv_data, 4, service_identifier, 0, 4);
 
@@ -139,7 +175,8 @@ public class outerNetwork implements MessageAdapter {
 	}
 
 	private boolean Handle_Success(byte[] recv_data) {
-		ml.ReciveMessage(new Message(Message.MESSAGE, "登录成功！\n开始发送心跳包..."));
+		ml.ReciveMessage(new Message(Message.MESSAGE,
+				"登录成功！\n输入q并回车以注销\n开始发送心跳包...\n"));
 		state = State.ONLINE;
 		System.arraycopy(recv_data, 23, auth_info, 0, 16);
 		// start alive timer
@@ -152,7 +189,7 @@ public class outerNetwork implements MessageAdapter {
 	}
 
 	private void Handle_Failure(byte[] recv_data) {
-		ml.ReciveMessage(new Message(Message.ERROR, "登陆失败:"));
+		ml.ReciveMessage(new Message(Message.ERROR, "登陆失败:\n"));
 		if (recv_data[4] == 0x01) {
 			// offset: 5: in use IP 4byte;
 			// offset: 9: in use MAC 6 byte;
@@ -163,11 +200,11 @@ public class outerNetwork implements MessageAdapter {
 					recv_data[13], recv_data[14]);
 
 			ml.ReciveMessage(new Message(Message.ERROR, "改账号已在" + IP + MAC
-					+ "上登录！"));
+					+ "上登录！\n"));
 		}
 		// Username or password error!
 		else if (recv_data[4] == 0x03) {
-			ml.ReciveMessage(new Message(Message.ERROR, "用户名或密码不对，请重新输入！"));
+			ml.ReciveMessage(new Message(Message.ERROR, "用户名或密码不对，请重新输入！\n"));
 		}
 		// // exceed the balance.....
 		// else if (recv_data[4] == 0x04) {
@@ -176,19 +213,20 @@ public class outerNetwork implements MessageAdapter {
 		// Wrong IP -- Account not match 802.1X Account
 		else if (recv_data[4] == 0x07) {
 			ml.ReciveMessage(new Message(Message.ERROR,
-					"与内网绑定MAC不匹配！(可指定MAC重试)"));
+					"与内网绑定MAC不匹配！(可指定MAC重试)\n"));
 		}
 		// Wrong MAC
 		else if (recv_data[4] == 0x0b) {
 			String MAC = String.format("%02X-%02X-%02X-%02X-%02X-%02X ",
 					recv_data[5], recv_data[6], recv_data[7], recv_data[8],
 					recv_data[9], recv_data[10]);
-			ml.ReciveMessage(new Message(Message.ERROR, "登陆MAC不匹配！应为:" + MAC));
+			ml.ReciveMessage(new Message(Message.ERROR, "登陆MAC不匹配！应为:" + MAC
+					+ " 请使用-s指定此MAC重试\n"));
 		}
 		// other 0x05 error
 		else {
 			ml.ReciveMessage(new Message(Message.ERROR,
-					"登录失败。发出登录认证包，可能服务器没有通过验证，请查看是否需要升级客户端程序!"));
+					"登录失败。发出登录认证包，可能服务器没有通过验证，请查看是否需要升级客户端程序!\n"));
 		}
 	}
 
@@ -210,12 +248,12 @@ public class outerNetwork implements MessageAdapter {
 		DatagramPacket send_packet = new DatagramPacket(send_data,
 				send_data.length, logif.ServerAddress, logif.port);
 
-		ml.ReciveMessage(new Message(Message.MESSAGE, "发送连接请求..."));
+		ml.ReciveMessage(new Message(Message.MESSAGE, "发送连接请求...\n"));
 		try {
 			socket.send(send_packet);
 		} catch (IOException e) {
 			e.printStackTrace();
-			ml.ReciveMessage(new Message(Message.ERROR, "发送Start Request失败！"));
+			ml.ReciveMessage(new Message(Message.ERROR, "发送Start Request失败！\n"));
 			return false;
 		}
 		return true;
@@ -258,12 +296,13 @@ public class outerNetwork implements MessageAdapter {
 		DatagramPacket send_packet = new DatagramPacket(send_data,
 				send_data.length, logif.ServerAddress, logif.port);
 
-		ml.ReciveMessage(new Message(Message.MESSAGE, "发送心跳包"));
+		ml.ReciveMessage(new Message(Message.MESSAGE, "发送心跳包,time=" + time
+				+ "\r"));
 		try {
 			socket.send(send_packet);
 		} catch (IOException e) {
 			e.printStackTrace();
-			ml.ReciveMessage(new Message(Message.MESSAGE, "发送心跳包失败"));
+			ml.ReciveMessage(new Message(Message.MESSAGE, "发送心跳包失败\n"));
 		}
 		return true;
 	}
@@ -279,14 +318,13 @@ public class outerNetwork implements MessageAdapter {
 		data_head[1] = 0x01; // type
 		data_head[2] = 0x00; // 结束标志
 		data_head[3] = (byte) (logif.UserName.length() + 20); // 用户名长度+20
-		// // the first MD5 calculation
+		// the first MD5 calculation
 		byte[] md5_content = { 0x03, 0x01 };
 		md5_content = arraycat(md5_content, service_identifier);
 		md5_content = arraycat(md5_content, logif.PassWord.getBytes());
 
 		login_a_md5 = md5_key(md5_content);
 
-		// // MAC Address XOR calculation
 		byte[] username_zero = new byte[36 + 2];
 		System.arraycopy(logif.UserName.getBytes(), 0, username_zero, 0,
 				logif.UserName.length());
@@ -296,7 +334,7 @@ public class outerNetwork implements MessageAdapter {
 
 		int mac_length = logif.src_mac.length;
 		byte[] mac_xor = new byte[mac_length];
-
+		// MAC Address XOR calculation
 		for (int i = 0; i < mac_length; i++)
 			mac_xor[i] = (byte) (logif.src_mac[i] ^ login_a_md5[i]);
 
@@ -316,7 +354,8 @@ public class outerNetwork implements MessageAdapter {
 		data_front = arraycat(data_front, mac_xor);
 		data_front = arraycat(data_front, login_b_md5);
 		data_front = arraycat(data_front, num_nic);
-		data_front = arraycat(data_front, localhost.getAddress());
+		data_front = arraycat(data_front,
+				logif.nif.addresses[0].address.getAddress());
 		data_front = arraycat(data_front, nic_ip_zero);
 
 		md5_content = arraycat(data_front,
@@ -329,7 +368,7 @@ public class outerNetwork implements MessageAdapter {
 		// // Add host DNS address
 		byte[] host_name = new byte[32];
 
-		String str_host_name = localhost.getHostName();
+		String str_host_name = logif.nif.addresses[0].address.getHostName();
 		System.arraycopy(str_host_name.getBytes(), 0, host_name, 0,
 				str_host_name.getBytes().length);
 
@@ -382,12 +421,12 @@ public class outerNetwork implements MessageAdapter {
 		DatagramPacket send_packet = new DatagramPacket(send_data,
 				send_data.length, logif.ServerAddress, logif.port);
 
-		ml.ReciveMessage(new Message(Message.MESSAGE, "发送用户名、密码..."));
+		ml.ReciveMessage(new Message(Message.MESSAGE, "发送用户名、密码...\n"));
 		try {
 			socket.send(send_packet);
 		} catch (IOException e) {
 			e.printStackTrace();
-			ml.ReciveMessage(new Message(Message.ERROR, "发送 Login Auth失败！"));
+			ml.ReciveMessage(new Message(Message.ERROR, "发送 Login Auth失败！\n"));
 			return false;
 		}
 		return true;
@@ -401,7 +440,7 @@ public class outerNetwork implements MessageAdapter {
 		data_head[2] = 0x00; // 结束标志
 		data_head[3] = (byte) (logif.UserName.length() + 20); // 用户名长度+20
 		// // the first MD5 calculation
-		byte[] md5_content = { 0x03, 0x01 };
+		byte[] md5_content = { 0x06, 0x01 };
 		md5_content = arraycat(md5_content, service_identifier);
 		md5_content = arraycat(md5_content, logif.PassWord.getBytes());
 
@@ -415,17 +454,26 @@ public class outerNetwork implements MessageAdapter {
 		username_zero[36] = 0x20; // 0x89
 		username_zero[37] = 0x01;
 
+		// MAC Address XOR calculation
+		int mac_length = logif.src_mac.length;
+		byte[] mac_xor = new byte[mac_length];
+		for (int i = 0; i < mac_length; i++)
+			mac_xor[i] = (byte) (logif.src_mac[i] ^ login_a_md5[i]);
+
 		send_data = arraycat(data_head, login_a_md5);
 		send_data = arraycat(send_data, username_zero);
+		send_data = arraycat(send_data, mac_xor);
+		send_data = arraycat(send_data, auth_info);
+
 		DatagramPacket send_packet = new DatagramPacket(send_data,
 				send_data.length, logif.ServerAddress, logif.port);
 
-		ml.ReciveMessage(new Message(Message.MESSAGE, "发送注销验证..."));
+		ml.ReciveMessage(new Message(Message.MESSAGE, "发送注销验证...\n"));
 		try {
 			socket.send(send_packet);
 		} catch (IOException e) {
 			e.printStackTrace();
-			ml.ReciveMessage(new Message(Message.ERROR, "发送 Logout Auth失败！"));
+			ml.ReciveMessage(new Message(Message.ERROR, "发送 Logout Auth失败！\n"));
 			return false;
 		}
 		return true;
@@ -464,4 +512,12 @@ public class outerNetwork implements MessageAdapter {
 		this.ml = ml;
 	}
 
+	@Override
+	public void run() {
+		// TODO Auto-generated method stub
+		if (!Start() && state == State.LOGIN) {
+			alive.cancel();
+			ml.ReciveMessage(new Message(Message.ERROR, "拨号失败，请输入q并回车以退出\n"));
+		}
+	}
 }
