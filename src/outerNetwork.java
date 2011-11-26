@@ -95,7 +95,7 @@ public class outerNetwork implements MessageAdapter, Runnable {
 								"登陆超时，服务器响应超时！重试" + RetryTimes + "\n"));
 					} else {
 						ml.ReciveMessage(new Message(Message.ERROR,
-								"登陆超时，服务器响应超时！(是否指定了错误的服务器IP？)\n"));
+								"登陆超时，是否指定了错误的服务器IP？\n"));
 						ret = false;
 						break labwhile;
 					}
@@ -108,7 +108,7 @@ public class outerNetwork implements MessageAdapter, Runnable {
 						break;
 					} else {
 						ml.ReciveMessage(new Message(Message.ERROR,
-								"注销超时，服务器响应超时！重试次数过!指定下线参数重新运行\n"));
+								"注销超时，请指定下线参数重新运行\n"));
 						ret = false;
 						break labwhile;
 					}
@@ -132,8 +132,11 @@ public class outerNetwork implements MessageAdapter, Runnable {
 			case 0x04:
 				if (state == State.LOGIN)
 					Handle_Success(recv_data);
-				else
+				else {
 					ml.ReciveMessage(new Message(Message.MESSAGE, "注销成功！\n"));
+					ret = true;
+					break labwhile;
+				}
 				break;
 			case 0x05:
 				Handle_Failure(recv_data);
@@ -143,13 +146,13 @@ public class outerNetwork implements MessageAdapter, Runnable {
 				break;
 			case 0x4d:
 				if (recv_data[1] == 0x25) {
-					ml.ReciveMessage(new Message(Message.ERROR, "费用超支，不能上网！\n"));
+					ml.ReciveMessage(new Message(Message.ERROR, "\n费用超支，不能上网！\n"));
 					ret = false;
 					break labwhile;
 				}
 				break;
 			default:
-				ml.ReciveMessage(new Message(Message.MESSAGE, "收到未知包，忽略\n"));
+				ml.ReciveMessage(new Message(Message.MESSAGE, "\n收到未知包，忽略\n"));
 				break;
 			}
 		}
@@ -248,7 +251,7 @@ public class outerNetwork implements MessageAdapter, Runnable {
 		DatagramPacket send_packet = new DatagramPacket(send_data,
 				send_data.length, logif.ServerAddress, logif.port);
 
-		ml.ReciveMessage(new Message(Message.MESSAGE, "发送连接请求...\n"));
+		ml.ReciveMessage(new Message(Message.MESSAGE, "\n发送连接请求...\n"));
 		try {
 			socket.send(send_packet);
 		} catch (IOException e) {
@@ -296,8 +299,7 @@ public class outerNetwork implements MessageAdapter, Runnable {
 		DatagramPacket send_packet = new DatagramPacket(send_data,
 				send_data.length, logif.ServerAddress, logif.port);
 
-		ml.ReciveMessage(new Message(Message.MESSAGE, "发送心跳包,time=" + time
-				+ "\r"));
+		ml.ReciveMessage(new Message(Message.MESSAGE, "\r发送心跳包,time=" + time));
 		try {
 			socket.send(send_packet);
 		} catch (IOException e) {
@@ -516,8 +518,8 @@ public class outerNetwork implements MessageAdapter, Runnable {
 	public void run() {
 		// TODO Auto-generated method stub
 		if (!Start() && state == State.LOGIN) {
-			alive.cancel();
 			ml.ReciveMessage(new Message(Message.ERROR, "拨号失败，请输入q并回车以退出\n"));
 		}
+		alive.cancel();
 	}
 }

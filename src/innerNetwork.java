@@ -46,13 +46,14 @@ public class innerNetwork implements MessageAdapter, PacketReceiver {
 
 		int ret;
 		while ((ret = pc.dispatchPacket(0, (PacketReceiver) this)) >= 0)
-			System.out.println(ret);
+			;
+			//System.out.println(ret);
 		// pc.loopPacket(-1, (PacketReceiver) this);// 循环
 		pc.close();
 	}
 
 	public void receivePacket(Packet p) {
-		System.out.println("receivePacket");
+		//System.out.println("receivePacket");
 
 		_802dot1XPacket tmp = new _802dot1XPacket(p);
 
@@ -102,10 +103,10 @@ public class innerNetwork implements MessageAdapter, PacketReceiver {
 
 	public boolean logoff() {
 		_802dot1XPacket start = new _802dot1XPacket(logif.src_mac,
-				_802dot1XPacket.EAPOL_TYPE_START);
+				_802dot1XPacket.EAPOL_TYPE_LOGOFF);
 
 		ps.sendPacket(start);
-		ml.ReciveMessage(new Message(Message.MESSAGE, "寻找服务器...\n"));
+		ml.ReciveMessage(new Message(Message.MESSAGE, "内网注销成功!\n"));
 		return false;
 	}
 
