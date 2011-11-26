@@ -1,4 +1,3 @@
-import java.awt.event.KeyAdapter;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.net.InetAddress;
@@ -16,7 +15,7 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.apache.commons.cli.PosixParser;
 
-class CLI extends KeyAdapter implements MessageListener {
+class CLI implements MessageListener {
 
 	LoginInfo logif = new LoginInfo();
 
@@ -26,6 +25,12 @@ class CLI extends KeyAdapter implements MessageListener {
 
 	Type type = Type.inner;
 
+	enum Action {
+		LOGIN, LOGOUT
+	};
+
+	Action action = Action.LOGIN;
+
 	enum OS {
 		Windows, Linux, Mac
 	};
@@ -34,6 +39,59 @@ class CLI extends KeyAdapter implements MessageListener {
 	String cmdLineSyntax = "java -jar jdrcom.jar [-OPTIONS]"
 			+ "\njava版的dr.com的开源拨号客户端\n";
 
+	public boolean run(String[] args) {
+
+		if (!args_Handler(args))
+			return false;
+
+		switch (type) {
+		case inner:
+			innerNetwork in = new innerNetwork(logif);
+			in.addMessageListener(this);
+			switch (action) {
+			case LOGIN:
+				in.Start();
+				break;
+			case LOGOUT:
+				in.logoff();
+				break;
+			}
+			break;
+		case outer:
+			outerNetwork out = null;
+			try {
+				out = new outerNetwork(logif);
+			} catch (Exception e1) {
+				// TODO Auto-generated catch block
+				System.out.println("端口绑定失败，请检查是否有其他客户端在运行！");
+				break;
+			}
+			out.addMessageListener(this);
+			Thread thd = new Thread(out);
+			switch (action) {
+			case LOGIN:
+				thd.start();
+				try {
+					while (thd.isAlive() && System.in.read() != 'q')
+						;// ONLINE
+					out.state = outerNetwork.State.STOP;
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+				break;
+			case LOGOUT:
+				thd.start();
+				while (out.state != outerNetwork.State.ONLINE)
+					;
+				out.state = outerNetwork.State.STOP;
+				break;
+			}
+			break;
+		}
+		return true;
+	}
+
 	private void printHelp(Options options) {
 		System.out
 				.println("\n因学校无IPV6环境，无法测试，本软件暂不支持IPV6！如果你想帮助作者完善请访问 https://code.google.com/p/jdrcom/\n");
@@ -41,6 +99,7 @@ class CLI extends KeyAdapter implements MessageListener {
 		formatter.printHelp(cmdLineSyntax, options);
 	}
 
+	@SuppressWarnings("static-access")
 	private Options createOptions() {
 		// create the Options
 
@@ -48,23 +107,24 @@ class CLI extends KeyAdapter implements MessageListener {
 				.withArgName("filename").hasArg().withDescription("使用配置文件的参数")
 				.create("c"));
 		// 读取配置文件
-		options.addOption("i", "intetface", true, "网卡");
-		options.addOption("l", "list", false, "输出网卡列表");
+		options.addOption("i", "intetface", true, "指定拨号网卡名");
+		options.addOption("l", "list", false, "列出本机所有网卡名");
 		options.addOption("t", "type", true,
-				"登陆类型 内网：i(inner) 外网：o(outter) 默认为i");
-		options.addOption("u", "username", true, "用户名");
-		options.addOption("p", "password", true, "密码,默认123456");
-		options.addOption("svr", "serverip", true, "外网登陆服务器ip 默认自动搜索");// 为10.5.2.3
+				"登录类型 内网：i(inner) 外网：o(outter) 默认为内网");
+		options.addOption("a", "action", true,
+				"登录还是注销 登录：i(login) 注销：o(logout) 默认为登录");
+		options.addOption("u", "username", true, "指定用户名");
+		options.addOption("p", "password", true, "指定密码,如不指定则默认123456");
+		options.addOption("svr", "serverip", true, "外网登录服务器ip 默认自动搜索");// 为10.5.2.3
 		options.addOption(
 				"ds",
 				"dhcpscript",
 				true,
 				"内网拨号成功后自定义的自动获取IP脚本命令\nWindows下默认为\"ipconfig /renew *\"\nLinux默认为\"dhcpc *(待考虑)\" ");
-		options.addOption("s", "srcmac", true, "指定源MAC地址，比如你用别人的账号上网");
+		options.addOption("s", "srcmac", true, "指定源MAC地址，当你用别人的账号上网时需要指定");
 		options.addOption("d", "dstmac", true,
 				"指定目的MAC地址,默认为01-80-C2-00-00-03,一般不用指定");
 		options.addOption("h", "help", false, "显示此帮助");
-		// String[] args = new String[]{ "--block-size=10" };
 
 		return options;
 	}
@@ -82,7 +142,7 @@ class CLI extends KeyAdapter implements MessageListener {
 
 			if (line.hasOption('h') || line.getOptions().length < 1) {
 				printHelp(options);
-				return true;
+				return false;
 			}
 
 			if (line.hasOption('l')) {
@@ -95,7 +155,7 @@ class CLI extends KeyAdapter implements MessageListener {
 					System.out.printf("网卡名称:%s\n描述:%s\n\n", n.name,
 							n.description);
 				}
-				return true;
+				return false;
 			}
 
 			if (line.hasOption('i')) {
@@ -116,6 +176,19 @@ class CLI extends KeyAdapter implements MessageListener {
 					type = Type.inner;
 				} else if (line.getOptionValue('t').matches("^o$|^outer$")) {
 					type = Type.outer;
+				}else {
+					System.out.println("未知登录类型！");
+					return false;
+				}
+			}
+			if (line.hasOption('a')) {
+				if (line.getOptionValue('a').matches("^i$|^login$")) {
+					action = Action.LOGIN;
+				} else if (line.getOptionValue('a').matches("^o$|^logout$")) {
+					action = Action.LOGOUT;
+				}else {
+					System.out.println("未知Action！");
+					return false;
 				}
 			}
 
@@ -183,48 +256,6 @@ class CLI extends KeyAdapter implements MessageListener {
 		Properties props = System.getProperties();
 		if (props.getProperty("os.name").contains("indows"))
 			logif.os = "windows";
-
-		return true;
-	}
-
-	public boolean run(String[] args) {
-
-		args_Handler(args);
-
-		switch (type) {
-		case inner:
-			innerNetwork in = new innerNetwork(logif);
-			in.addMessageListener(this);
-			in.Start();
-			break;
-		case outer:
-			outerNetwork out = null;
-			try {
-				out = new outerNetwork(logif);
-			} catch (Exception e1) {
-				// TODO Auto-generated catch block
-				System.out.println("端口绑定失败，请检查是否有其他客户端在运行！");
-				break;
-			}
-
-			out.addMessageListener(this);
-			// out.login();
-			Thread thd = new Thread(out);
-			thd.start();
-			try {
-
-				while (thd.isAlive() && System.in.read() != 'q')
-					;//ONLINE
-				
-				out.state = outerNetwork.State.STOP;
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-			break;
-		default:
-			break;
-		}
 
 		return true;
 	}
