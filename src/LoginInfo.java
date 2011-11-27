@@ -19,8 +19,7 @@ final class LoginInfo {
 	public String os= null;
 	LoginInfo() {
 		try {
-			ServerAddress = InetAddress.getByName("1.1.1.1");
-			//ServerAddress = InetAddress.getByName("202.1.1.1");
+			ServerAddress = InetAddress.getByName("1.1.1.1"); //202.1.1.1
 			host_dnsp = InetAddress.getByName("211.64.192.1");
 			host_dnss = InetAddress.getByName("8.8.4.4");
 
