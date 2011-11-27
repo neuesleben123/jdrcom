@@ -6,16 +6,19 @@ import jpcap.PacketReceiver;
 import jpcap.packet.Packet;
 
 public class innerNetwork implements MessageAdapter, PacketReceiver {
-	/*
-	 * NetworkInterface nif; byte[] src_mac; byte[] dst_mac; String UserName;
-	 * String PassWord;
-	 */
+	enum State {
+		START, Identity, Challenge, LOGOFF
+	};
+
+	public State state = State.START;
+
 	LoginInfo logif;
 
 	JpcapCaptor pc;
 	JpcapSender ps;
 
 	MessageListener ml;
+	long startTime = System.currentTimeMillis();
 
 	public innerNetwork(LoginInfo logif) {
 		// TODO Auto-generated constructor stub
@@ -37,29 +40,57 @@ public class innerNetwork implements MessageAdapter, PacketReceiver {
 
 	@SuppressWarnings("deprecation")
 	public void Start() {
+		int RetryTimes = 0;
 
 		_802dot1XPacket start = new _802dot1XPacket(logif.src_mac,
 				_802dot1XPacket.EAPOL_TYPE_START);
 
 		ps.sendPacket(start);
 		ml.ReciveMessage(new Message(Message.MESSAGE, "寻找服务器...\n"));
+		startTime = System.currentTimeMillis();
+		while (pc.dispatchPacket(0, (PacketReceiver) this) >= 0) {
+			if (System.currentTimeMillis() - startTime > 5000) {
+				switch (state) {
+				case START:
+					if (++RetryTimes > 3) {
+						ml.ReciveMessage(new Message(Message.MESSAGE,
+								"登陆超时，建议插拔网线后重试\n"));
+						return;
+					}
+					_802dot1XPacket reStart = new _802dot1XPacket(
+							logif.src_mac, _802dot1XPacket.EAPOL_TYPE_START);
+					ps.sendPacket(reStart);
+					startTime = System.currentTimeMillis();
 
-		int ret;
-		while ((ret = pc.dispatchPacket(0, (PacketReceiver) this)) >= 0)
-			;
-			//System.out.println(ret);
+					ml.ReciveMessage(new Message(Message.MESSAGE,
+							"寻找服务器超时，重试" + RetryTimes + "\n"));
+					break;
+				case Identity:
+
+					break;
+				case Challenge:
+					ml.ReciveMessage(new Message(Message.MESSAGE,
+							"密码验证超时，是否源MAC不匹配？\n"));
+					return;
+				default:
+					startTime = System.currentTimeMillis();
+					break;
+				}
+			}
+		}
+		// System.out.println(ret);
 		// pc.loopPacket(-1, (PacketReceiver) this);// 循环
 		pc.close();
 	}
 
 	public void receivePacket(Packet p) {
-		//System.out.println("receivePacket");
+		// System.out.println("receivePacket");
 
 		_802dot1XPacket tmp = new _802dot1XPacket(p);
 
 		switch (tmp.getEAPOLType()) {
 		case _802dot1XPacket.EAPOL_TYPE_LOGOFF:
-			ml.ReciveMessage(new Message(Message.ERROR, "服务器强制下线！\n"));
+			// ml.ReciveMessage(new Message(Message.ERROR, "服务器强制下线！\n"));
 			break;
 		case _802dot1XPacket.EAPOL_TYPE_EAPPACKET:
 			switch (tmp.getEAPCode()) {
@@ -69,6 +100,8 @@ public class innerNetwork implements MessageAdapter, PacketReceiver {
 				case _802dot1XPacket.EAP_REQUEST_IDENTITY:
 					tmp.ConvertToIdentityResponse(logif.UserName, logif.src_mac);
 					ps.sendPacket(tmp);
+					state = State.Identity;
+					startTime = System.currentTimeMillis();
 					ml.ReciveMessage(new Message(Message.MESSAGE, "发送用户名\n"));
 					break;
 				case _802dot1XPacket.EAP_REQUEST_NOTIFICATION:
@@ -78,13 +111,15 @@ public class innerNetwork implements MessageAdapter, PacketReceiver {
 					tmp.ConvertToMD5ChallengeResponse(logif.UserName,
 							logif.PassWord, logif.src_mac);
 					ps.sendPacket(tmp);
+					state = State.Challenge;
+					startTime = System.currentTimeMillis();
 					ml.ReciveMessage(new Message(Message.MESSAGE, "发送密码\n"));
 					break;
 				}
 				break;
 			case _802dot1XPacket.EAP_CODE_FAILURE:
 				ml.ReciveMessage(new Message(Message.ERROR,
-						"内网登陆失败!请检查用户名、密码、MAC是否正确,且没有他人正在使用此账号!\n"));
+						"内网登陆失败!请检查用户名、密码、MAC是否正确,且没有他人正在使用此账号!\n请等待1分钟或插拔网线后重试\n"));
 				pc.breakLoop();
 				break;
 			case _802dot1XPacket.EAP_CODE_SUCCESS:

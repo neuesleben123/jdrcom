@@ -1,6 +1,8 @@
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
@@ -10,6 +12,7 @@ import java.util.TimerTask;
 
 import jpcap.JpcapCaptor;
 import jpcap.NetworkInterface;
+import sun.misc.BASE64Encoder;
 
 public class outerNetwork implements MessageAdapter, Runnable {
 
@@ -39,9 +42,10 @@ public class outerNetwork implements MessageAdapter, Runnable {
 			if (n.name.equals(logif.nif.name)) {
 				logif.nif = n;
 				try {
-					socket = new DatagramSocket(logif.port,
-							n.addresses[0].address);
-					socket.setSoTimeout(5000);
+					// socket = new DatagramSocket(logif.port,
+					// n.addresses[0].address);
+					socket = new DatagramSocket(logif.port);
+					socket.setSoTimeout(3000);
 				} catch (SocketException e) {
 					// TODO Auto-generated catch block
 					throw new Exception(e);
@@ -92,7 +96,18 @@ public class outerNetwork implements MessageAdapter, Runnable {
 					RetryTimes++;
 					if (RetryTimes < 4) {
 						ml.ReciveMessage(new Message(Message.MESSAGE,
-								"登陆超时，服务器响应超时！重试" + RetryTimes + "\n"));
+								"服务器响应超时！重试" + RetryTimes + "\n"));
+						if (RetryTimes > 1)
+							try {
+								logif.ServerAddress = InetAddress
+										.getByName("202.1.1.1");
+								ml.ReciveMessage(new Message(Message.MESSAGE,
+										"使用探测IP方式2\n"));
+							} catch (UnknownHostException e1) {
+								// TODO Auto-generated catch block
+								e1.printStackTrace();
+							}
+
 					} else {
 						ml.ReciveMessage(new Message(Message.ERROR,
 								"登陆超时，是否指定了错误的服务器IP？\n"));
@@ -123,6 +138,8 @@ public class outerNetwork implements MessageAdapter, Runnable {
 			switch (recv_data[0]) {
 			case 0x02:
 				logif.ServerAddress = recv_packet.getAddress(); // 自动获取服务器IP
+				ml.ReciveMessage(new Message(Message.MESSAGE, "自动探测到服务器IP"
+						+ logif.ServerAddress.toString() + "\n"));
 				Handle_Start_Response(recv_data);
 				if (state == State.LOGIN)
 					Send_Login_Auth(recv_data);
@@ -143,20 +160,42 @@ public class outerNetwork implements MessageAdapter, Runnable {
 				ret = false;
 				break labwhile;
 			case 0x07: // alive response
-				break;
+				break;	
 			case 0x4d:
-				if (recv_data[1] == 0x25) {
-					ml.ReciveMessage(new Message(Message.ERROR, "\n费用超支，不能上网！\n"));
+				switch (recv_data[1]) {
+				case 0x25:
+					ml.ReciveMessage(new Message(Message.ERROR,
+							"\n费用超支，不能上网！\n"));
 					ret = false;
 					break labwhile;
+				case 0x38:
+					String msg = null;
+					try {
+						msg = new String(recv_data, 4,
+								recv_packet.getLength() - 4, "GBK");
+					} catch (UnsupportedEncodingException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+					ml.ReciveMessage(new Message(Message.MESSAGE, "\n服务器消息："
+							+ msg + "\n"));
+					break;
 				}
 				break;
 			default:
+				// for (byte b : recv_data) {
+				// System.out.print(b);
+				// }
 				ml.ReciveMessage(new Message(Message.MESSAGE, "\n收到未知包，忽略\n"));
 				break;
 			}
 		}
 		return ret;
+	}
+
+	private boolean Handle_New_Password(byte[] recv_data) {
+
+		return true;
 	}
 
 	private boolean Handle_Start_Response(byte[] recv_data) {
@@ -256,7 +295,8 @@ public class outerNetwork implements MessageAdapter, Runnable {
 			socket.send(send_packet);
 		} catch (IOException e) {
 			e.printStackTrace();
-			ml.ReciveMessage(new Message(Message.ERROR, "发送Start Request失败！\n"));
+			ml.ReciveMessage(new Message(Message.ERROR, "发送Start Request失败！("
+					+ send_packet.getSocketAddress().toString() + ")\n"));
 			return false;
 		}
 		return true;
