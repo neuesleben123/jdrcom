@@ -72,8 +72,17 @@ class CLI implements MessageListener {
 			case LOGIN:
 				thd.start();
 				try {
-					while (thd.isAlive() && System.in.read() != 'q')
-						;// ONLINE
+					labrun: while (thd.isAlive()) {
+						// System.out.print("\n等待命令:");
+						switch (System.in.read()) {
+						case 'i':
+							out.Send_Alive();
+							out.Output_Infomation();
+							break;
+						case 'q':
+							break labrun;
+						}
+					}// ONLINE
 					out.state = outerNetwork.State.STOP;
 				} catch (IOException e) {
 					// TODO Auto-generated catch block
@@ -116,11 +125,8 @@ class CLI implements MessageListener {
 		options.addOption("u", "username", true, "指定用户名");
 		options.addOption("p", "password", true, "指定密码,如不指定则默认123456");
 		options.addOption("svr", "serverip", true, "外网登录服务器ip 默认自动搜索");// 为10.5.2.3
-		options.addOption(
-				"ds",
-				"dhcpscript",
-				true,
-				"内网拨号成功后自定义的自动获取IP脚本命令\nWindows下默认为\"ipconfig /renew *\"\nLinux默认为\"dhcpc *(待考虑)\" ");
+		options.addOption("ds", "dhcpscript", true,
+				"内网拨号成功后自定义的自动获取IP脚本命令\nWindows下默认为\"ipconfig /renew *\"\nLinux默认为\"(待考虑)\" ");
 		options.addOption("s", "srcmac", true, "指定源MAC地址，当你用别人的账号上网时需要指定");
 		options.addOption("d", "dstmac", true,
 				"指定目的MAC地址,默认为01-80-C2-00-00-03,一般不用指定");
@@ -176,7 +182,7 @@ class CLI implements MessageListener {
 					type = Type.inner;
 				} else if (line.getOptionValue('t').matches("^o$|^outer$")) {
 					type = Type.outer;
-				}else {
+				} else {
 					System.out.println("未知登录类型！");
 					return false;
 				}
@@ -186,7 +192,7 @@ class CLI implements MessageListener {
 					action = Action.LOGIN;
 				} else if (line.getOptionValue('a').matches("^o$|^logout$")) {
 					action = Action.LOGOUT;
-				}else {
+				} else {
 					System.out.println("未知Action！");
 					return false;
 				}
@@ -246,16 +252,20 @@ class CLI implements MessageListener {
 
 			logif.PassWord = line.getOptionValue('p', "123456");
 
+			Properties props = System.getProperties();
+			if (props.getProperty("os.name").contains("indows")) {
+				logif.os = "windows";
+				logif.dhcpScript = "ipconfig /renew *";
+			}
+
+			if (line.hasOption("ds")) {
+				logif.dhcpScript = line.getOptionValue("ds");
+			}
+
 		} catch (ParseException exp) {
 			System.out.println("错误:" + exp.getMessage());
 			return false;
 		}
-
-		// if (args[1].equals("802on")) {;
-
-		Properties props = System.getProperties();
-		if (props.getProperty("os.name").contains("indows"))
-			logif.os = "windows";
 
 		return true;
 	}
@@ -264,20 +274,29 @@ class CLI implements MessageListener {
 	public void ReciveMessage(Message msg) {
 		// TODO Auto-generated method stub
 		System.out.print(msg.msg);
-
-		if (msg.type == Message.SUCCESS)
+		switch (msg.type) {
+		case INNERSUCCESS:
 			if (logif.os.equals("windows")) {
-				System.out.println("获取IP地址...(ipconfig /renew *)");
+				System.out.println("获取IP地址...(" + logif.dhcpScript + ")");
 				try {
-					Runtime.getRuntime().exec("ipconfig /renew *");
+					Runtime.getRuntime().exec(logif.dhcpScript);
+				} catch (IllegalArgumentException e) {
+					// TODO: handle exception
+					System.out.println("DHCP脚本运行错误！请手动设置获取IP");
+					return;
 				} catch (IOException e) {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
+					return;
 				}
 				System.out.println("如不能上网请检查网卡是否设置为自动获取IP，DNS是否正确");
 			} else {
 				System.out.println("如采用DHCP，请运行DHCP客户端获取IP地址！");
 			}
-
+			break;
+		case OUTTERSUCCESS:
+			System.out.println("注销请按q+回车，查询实时信息请按i+回车！");
+			break;
+		}
 	}
 }

@@ -17,6 +17,8 @@ final class LoginInfo {
 	public InetAddress dhcp = null;
 	public int port = 0xF000; // 默认端口 61440;;
 	public String os= null;
+	public String dhcpScript = null;
+	
 	LoginInfo() {
 		try {
 			ServerAddress = InetAddress.getByName("1.1.1.1"); //202.1.1.1
