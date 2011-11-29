@@ -1,16 +1,16 @@
+public class Message {
+	public enum Msgtype {
+		ERROR, INNERSUCCESS, MESSAGE,OUTTERSUCCESS
+	};
 
-public class Message{
-	int type;
-	public static final int ERROR = 0;
-	public static final int SUCCESS = 1;
-	public static final int MESSAGE = 2;
-	
-	String msg;
-	
+	Msgtype type=Msgtype.MESSAGE;
+	String msg=null;
+
 	public Message() {
-		
+
 	}
-	public Message (int type,String msg) {
+
+	public Message(Msgtype type, String msg) {
 		this.type = type;
 		this.msg = msg;
 	}

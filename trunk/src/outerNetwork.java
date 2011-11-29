@@ -7,12 +7,12 @@ import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.security.NoSuchAlgorithmException;
+import java.util.Calendar;
 import java.util.Timer;
 import java.util.TimerTask;
 
 import jpcap.JpcapCaptor;
 import jpcap.NetworkInterface;
-import sun.misc.BASE64Encoder;
 
 public class outerNetwork implements MessageAdapter, Runnable {
 
@@ -34,6 +34,12 @@ public class outerNetwork implements MessageAdapter, Runnable {
 	private DatagramSocket socket = null;
 	private byte recv_data[] = new byte[256];
 	private byte send_data[] = null;
+
+	private int onlineTime = 0;
+	private int totalOnlineTime = 0;
+	private int balance = 0;
+	private int flux = 0;
+	private int timeBalance;
 
 	public outerNetwork(LoginInfo logif) throws Exception {
 		this.logif = logif;
@@ -76,6 +82,7 @@ public class outerNetwork implements MessageAdapter, Runnable {
 				break;
 			case STOP:
 				alive.cancel();
+				Send_Alive();
 				state = State.LOGOFF;
 				RetryTimes = 0;
 				Send_Start_Request();
@@ -86,7 +93,7 @@ public class outerNetwork implements MessageAdapter, Runnable {
 				socket.receive(recv_packet);
 			} catch (UnknownHostException e) {
 				// e.printStackTrace();
-				ml.ReciveMessage(new Message(Message.ERROR, "获取本机IP失败！\n"));
+				ml.ReciveMessage(new Message(Message.Msgtype.ERROR, "获取本机IP失败！\n"));
 				ret = false;
 				break labwhile;
 			} catch (SocketTimeoutException e) {
@@ -95,13 +102,13 @@ public class outerNetwork implements MessageAdapter, Runnable {
 					// TODO:搜索第二服务器
 					RetryTimes++;
 					if (RetryTimes < 4) {
-						ml.ReciveMessage(new Message(Message.MESSAGE,
+						ml.ReciveMessage(new Message(Message.Msgtype.MESSAGE,
 								"服务器响应超时！重试" + RetryTimes + "\n"));
 						if (RetryTimes > 1)
 							try {
 								logif.ServerAddress = InetAddress
 										.getByName("202.1.1.1");
-								ml.ReciveMessage(new Message(Message.MESSAGE,
+								ml.ReciveMessage(new Message(Message.Msgtype.MESSAGE,
 										"使用探测IP方式2\n"));
 							} catch (UnknownHostException e1) {
 								// TODO Auto-generated catch block
@@ -109,7 +116,7 @@ public class outerNetwork implements MessageAdapter, Runnable {
 							}
 
 					} else {
-						ml.ReciveMessage(new Message(Message.ERROR,
+						ml.ReciveMessage(new Message(Message.Msgtype.ERROR,
 								"登陆超时，是否指定了错误的服务器IP？\n"));
 						ret = false;
 						break labwhile;
@@ -118,11 +125,11 @@ public class outerNetwork implements MessageAdapter, Runnable {
 				case LOGOFF:
 					RetryTimes++;
 					if (RetryTimes < 4) {
-						ml.ReciveMessage(new Message(Message.MESSAGE,
+						ml.ReciveMessage(new Message(Message.Msgtype.MESSAGE,
 								"注销超时，服务器响应超时！重试" + RetryTimes + "\n"));
 						break;
 					} else {
-						ml.ReciveMessage(new Message(Message.ERROR,
+						ml.ReciveMessage(new Message(Message.Msgtype.ERROR,
 								"注销超时，请指定下线参数重新运行\n"));
 						ret = false;
 						break labwhile;
@@ -132,13 +139,13 @@ public class outerNetwork implements MessageAdapter, Runnable {
 				}
 			} catch (IOException e) {
 				e.printStackTrace();
-				ml.ReciveMessage(new Message(Message.ERROR, "与服务器通讯时发生错误\n"));
+				ml.ReciveMessage(new Message(Message.Msgtype.ERROR, "与服务器通讯时发生错误\n"));
 			}
 
 			switch (recv_data[0]) {
 			case 0x02:
 				logif.ServerAddress = recv_packet.getAddress(); // 自动获取服务器IP
-				ml.ReciveMessage(new Message(Message.MESSAGE, "自动探测到服务器IP"
+				ml.ReciveMessage(new Message(Message.Msgtype.MESSAGE, "自动探测到服务器IP"
 						+ logif.ServerAddress.toString() + "\n"));
 				Handle_Start_Response(recv_data);
 				if (state == State.LOGIN)
@@ -150,7 +157,8 @@ public class outerNetwork implements MessageAdapter, Runnable {
 				if (state == State.LOGIN)
 					Handle_Success(recv_data);
 				else {
-					ml.ReciveMessage(new Message(Message.MESSAGE, "注销成功！\n"));
+					ml.ReciveMessage(new Message(Message.Msgtype.MESSAGE, "注销成功！\n"));
+					Output_Infomation();
 					ret = true;
 					break labwhile;
 				}
@@ -159,12 +167,17 @@ public class outerNetwork implements MessageAdapter, Runnable {
 				Handle_Failure(recv_data);
 				ret = false;
 				break labwhile;
-			case 0x07: // alive response
-				break;	
+			case 0x07:
+				switch (recv_data[5]) {
+				case 0x00: // response for alive
+					Handle_Alive_Response(recv_data);
+					break;
+				}
+				break;
 			case 0x4d:
 				switch (recv_data[1]) {
 				case 0x25:
-					ml.ReciveMessage(new Message(Message.ERROR,
+					ml.ReciveMessage(new Message(Message.Msgtype.ERROR,
 							"\n费用超支，不能上网！\n"));
 					ret = false;
 					break labwhile;
@@ -177,7 +190,7 @@ public class outerNetwork implements MessageAdapter, Runnable {
 						// TODO Auto-generated catch block
 						e.printStackTrace();
 					}
-					ml.ReciveMessage(new Message(Message.MESSAGE, "\n服务器消息："
+					ml.ReciveMessage(new Message(Message.Msgtype.MESSAGE, "\n服务器消息："
 							+ msg + "\n"));
 					break;
 				}
@@ -186,7 +199,7 @@ public class outerNetwork implements MessageAdapter, Runnable {
 				// for (byte b : recv_data) {
 				// System.out.print(b);
 				// }
-				ml.ReciveMessage(new Message(Message.MESSAGE, "\n收到未知包，忽略\n"));
+				ml.ReciveMessage(new Message(Message.Msgtype.MESSAGE, "\n收到未知包，忽略\n"));
 				break;
 			}
 		}
@@ -201,12 +214,12 @@ public class outerNetwork implements MessageAdapter, Runnable {
 	private boolean Handle_Start_Response(byte[] recv_data) {
 		// 检查
 		if (recv_data[0] != 0x02) {
-			ml.ReciveMessage(new Message(Message.ERROR,
+			ml.ReciveMessage(new Message(Message.Msgtype.ERROR,
 					"登录失败。发出连接请求，服务器响应错误！\n"));
 			return false;
 		}
 
-		ml.ReciveMessage(new Message(Message.MESSAGE, "收到同意连接\n"));
+		ml.ReciveMessage(new Message(Message.Msgtype.MESSAGE, "收到同意连接\n"));
 		service_identifier = new byte[4];
 		System.arraycopy(recv_data, 4, service_identifier, 0, 4);
 
@@ -217,8 +230,8 @@ public class outerNetwork implements MessageAdapter, Runnable {
 	}
 
 	private boolean Handle_Success(byte[] recv_data) {
-		ml.ReciveMessage(new Message(Message.MESSAGE,
-				"登录成功！\n输入q并回车以注销\n开始发送心跳包...\n"));
+		ml.ReciveMessage(new Message(Message.Msgtype.OUTTERSUCCESS,
+				"登录成功！\n开始发送心跳包...\n"));
 		state = State.ONLINE;
 		System.arraycopy(recv_data, 23, auth_info, 0, 16);
 		// start alive timer
@@ -230,8 +243,31 @@ public class outerNetwork implements MessageAdapter, Runnable {
 		return true;
 	}
 
+	public void Output_Infomation() {
+		String info = null;
+		info = String.format("\n*****************************\n"
+				+ "本月在线时间:\t%f分钟\n本月总流量:\t%fMB\n"
+				+ "实时余额:\t%f元\n实时剩余时间:\t%f分钟\n" + "本次在线时间:\t%d分%d秒"
+				+ "\n*****************************\n", totalOnlineTime / 60.0,
+				flux / 1024.0, balance / 100.0, timeBalance / 60.0,
+				onlineTime / 60, onlineTime % 60);
+		ml.ReciveMessage(new Message(Message.Msgtype.MESSAGE, info));
+	}
+
+	private void Handle_Alive_Response(byte[] recv_data) {
+		onlineTime = byteArrayToInt(recv_data, 32);
+		totalOnlineTime = byteArrayToInt(recv_data, 44);
+		flux = byteArrayToInt(recv_data, 48);
+		balance = byteArrayToInt(recv_data, 52);
+		balance /= 100;
+		timeBalance = byteArrayToInt(recv_data, 56);
+		if (timeBalance == -1) {
+			timeBalance = 0;
+		}
+	}
+
 	private void Handle_Failure(byte[] recv_data) {
-		ml.ReciveMessage(new Message(Message.ERROR, "登陆失败:\n"));
+		ml.ReciveMessage(new Message(Message.Msgtype.ERROR, "登陆失败:\n"));
 		if (recv_data[4] == 0x01) {
 			// offset: 5: in use IP 4byte;
 			// offset: 9: in use MAC 6 byte;
@@ -241,20 +277,20 @@ public class outerNetwork implements MessageAdapter, Runnable {
 					recv_data[9], recv_data[10], recv_data[11], recv_data[12],
 					recv_data[13], recv_data[14]);
 
-			ml.ReciveMessage(new Message(Message.ERROR, "改账号已在" + IP + MAC
+			ml.ReciveMessage(new Message(Message.Msgtype.ERROR, "改账号已在" + IP + MAC
 					+ "上登录！\n"));
 		}
 		// Username or password error!
 		else if (recv_data[4] == 0x03) {
-			ml.ReciveMessage(new Message(Message.ERROR, "用户名或密码不对，请重新输入！\n"));
+			ml.ReciveMessage(new Message(Message.Msgtype.ERROR, "用户名或密码不对，请重新输入！\n"));
 		}
 		// // exceed the balance.....
 		// else if (recv_data[4] == 0x04) {
-		// ml.ReciveMessage(new Message(Message.ERROR, "费用超支，不能上网！"));
+		// ml.ReciveMessage(new Message(Message.Msgtype.ERROR, "费用超支，不能上网！"));
 		// }
 		// Wrong IP -- Account not match 802.1X Account
 		else if (recv_data[4] == 0x07) {
-			ml.ReciveMessage(new Message(Message.ERROR,
+			ml.ReciveMessage(new Message(Message.Msgtype.ERROR,
 					"与内网绑定MAC不匹配！(可指定MAC重试)\n"));
 		}
 		// Wrong MAC
@@ -262,12 +298,12 @@ public class outerNetwork implements MessageAdapter, Runnable {
 			String MAC = String.format("%02X-%02X-%02X-%02X-%02X-%02X ",
 					recv_data[5], recv_data[6], recv_data[7], recv_data[8],
 					recv_data[9], recv_data[10]);
-			ml.ReciveMessage(new Message(Message.ERROR, "登陆MAC不匹配！应为:" + MAC
+			ml.ReciveMessage(new Message(Message.Msgtype.ERROR, "登陆MAC不匹配！应为:" + MAC
 					+ " 请使用-s指定此MAC重试\n"));
 		}
 		// other 0x05 error
 		else {
-			ml.ReciveMessage(new Message(Message.ERROR,
+			ml.ReciveMessage(new Message(Message.Msgtype.ERROR,
 					"登录失败。发出登录认证包，可能服务器没有通过验证，请查看是否需要升级客户端程序!\n"));
 		}
 	}
@@ -290,12 +326,12 @@ public class outerNetwork implements MessageAdapter, Runnable {
 		DatagramPacket send_packet = new DatagramPacket(send_data,
 				send_data.length, logif.ServerAddress, logif.port);
 
-		ml.ReciveMessage(new Message(Message.MESSAGE, "\n发送连接请求...\n"));
+		ml.ReciveMessage(new Message(Message.Msgtype.MESSAGE, "\n发送连接请求...\n"));
 		try {
 			socket.send(send_packet);
 		} catch (IOException e) {
 			e.printStackTrace();
-			ml.ReciveMessage(new Message(Message.ERROR, "发送Start Request失败！("
+			ml.ReciveMessage(new Message(Message.Msgtype.ERROR, "发送Start Request失败！("
 					+ send_packet.getSocketAddress().toString() + ")\n"));
 			return false;
 		}
@@ -307,7 +343,7 @@ public class outerNetwork implements MessageAdapter, Runnable {
 		return true;
 	}
 
-	private boolean Send_Alive() {
+	public boolean Send_Alive() {
 
 		send_data = new byte[20]; // type
 
@@ -339,12 +375,12 @@ public class outerNetwork implements MessageAdapter, Runnable {
 		DatagramPacket send_packet = new DatagramPacket(send_data,
 				send_data.length, logif.ServerAddress, logif.port);
 
-		ml.ReciveMessage(new Message(Message.MESSAGE, "\r发送心跳包,time=" + time));
+		ml.ReciveMessage(new Message(Message.Msgtype.MESSAGE, "\r发送心跳包,time=" + time));
 		try {
 			socket.send(send_packet);
 		} catch (IOException e) {
 			e.printStackTrace();
-			ml.ReciveMessage(new Message(Message.MESSAGE, "发送心跳包失败\n"));
+			ml.ReciveMessage(new Message(Message.Msgtype.MESSAGE, "发送心跳包失败\n"));
 		}
 		return true;
 	}
@@ -463,12 +499,12 @@ public class outerNetwork implements MessageAdapter, Runnable {
 		DatagramPacket send_packet = new DatagramPacket(send_data,
 				send_data.length, logif.ServerAddress, logif.port);
 
-		ml.ReciveMessage(new Message(Message.MESSAGE, "发送用户名、密码...\n"));
+		ml.ReciveMessage(new Message(Message.Msgtype.MESSAGE, "发送用户名、密码...\n"));
 		try {
 			socket.send(send_packet);
 		} catch (IOException e) {
 			e.printStackTrace();
-			ml.ReciveMessage(new Message(Message.ERROR, "发送 Login Auth失败！\n"));
+			ml.ReciveMessage(new Message(Message.Msgtype.ERROR, "发送 Login Auth失败！\n"));
 			return false;
 		}
 		return true;
@@ -510,12 +546,12 @@ public class outerNetwork implements MessageAdapter, Runnable {
 		DatagramPacket send_packet = new DatagramPacket(send_data,
 				send_data.length, logif.ServerAddress, logif.port);
 
-		ml.ReciveMessage(new Message(Message.MESSAGE, "发送注销验证...\n"));
+		ml.ReciveMessage(new Message(Message.Msgtype.MESSAGE, "发送注销验证...\n"));
 		try {
 			socket.send(send_packet);
 		} catch (IOException e) {
 			e.printStackTrace();
-			ml.ReciveMessage(new Message(Message.ERROR, "发送 Logout Auth失败！\n"));
+			ml.ReciveMessage(new Message(Message.Msgtype.ERROR, "发送 Logout Auth失败！\n"));
 			return false;
 		}
 		return true;
@@ -554,11 +590,16 @@ public class outerNetwork implements MessageAdapter, Runnable {
 		this.ml = ml;
 	}
 
+	private static final int byteArrayToInt(byte[] b, int pos) {
+		return (b[pos + 3] << 24) + ((b[pos + 2] & 0xFF) << 16)
+				+ ((b[pos + 1] & 0xFF) << 8) + (b[pos] & 0xFF);
+	}
+
 	@Override
 	public void run() {
 		// TODO Auto-generated method stub
 		if (!Start() && state == State.LOGIN) {
-			ml.ReciveMessage(new Message(Message.ERROR, "拨号失败，请输入q并回车以退出\n"));
+			ml.ReciveMessage(new Message(Message.Msgtype.ERROR, "拨号失败，请输入q并回车以退出\n"));
 		}
 		alive.cancel();
 	}
