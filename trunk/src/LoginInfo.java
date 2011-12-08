@@ -3,8 +3,9 @@ import java.net.UnknownHostException;
 
 import jpcap.NetworkInterface;
 
-
-
+enum OS {
+	Windows, Linux, Others
+};
 final class LoginInfo {
 	public NetworkInterface nif = null;
 	public byte[] src_mac = null;
@@ -16,7 +17,7 @@ final class LoginInfo {
 	public InetAddress host_dnss = null;
 	public InetAddress dhcp = null;
 	public int port = 0xF000; // 默认端口 61440;;
-	public String os= null;
+	public OS  os= null;
 	public String dhcpScript = null;
 	
 	LoginInfo() {

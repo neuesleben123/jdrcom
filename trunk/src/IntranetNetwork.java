@@ -5,7 +5,7 @@ import jpcap.JpcapSender;
 import jpcap.PacketReceiver;
 import jpcap.packet.Packet;
 
-public class innerNetwork implements MessageAdapter, PacketReceiver {
+public class IntranetNetwork implements MessageAdapter, PacketReceiver {
 	enum State {
 		START, Identity, Challenge, LOGOFF
 	};
@@ -20,7 +20,7 @@ public class innerNetwork implements MessageAdapter, PacketReceiver {
 	MessageListener ml;
 	long startTime = System.currentTimeMillis();
 
-	public innerNetwork(LoginInfo logif) {
+	public IntranetNetwork(LoginInfo logif) {
 		// TODO Auto-generated constructor stub
 		this.logif = logif;
 
