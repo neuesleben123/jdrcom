@@ -20,20 +20,16 @@ class CLI implements MessageListener {
 	LoginInfo logif = new LoginInfo();
 
 	enum Type {
-		inner, outer
+		INTRANET, INTERNET
 	};
 
-	Type type = Type.inner;
+	Type type = Type.INTRANET;
 
 	enum Action {
 		LOGIN, LOGOUT
 	};
 
 	Action action = Action.LOGIN;
-
-	enum OS {
-		Windows, Linux, Mac
-	};
 
 	Options options = new Options();
 	String cmdLineSyntax = "java -jar jdrcom.jar [-OPTIONS]"
@@ -45,8 +41,8 @@ class CLI implements MessageListener {
 			return false;
 
 		switch (type) {
-		case inner:
-			innerNetwork in = new innerNetwork(logif);
+		case INTRANET:
+			IntranetNetwork in = new IntranetNetwork(logif);
 			in.addMessageListener(this);
 			switch (action) {
 			case LOGIN:
@@ -57,10 +53,10 @@ class CLI implements MessageListener {
 				break;
 			}
 			break;
-		case outer:
-			outerNetwork out = null;
+		case INTERNET:
+			InternetNetwork out = null;
 			try {
-				out = new outerNetwork(logif);
+				out = new InternetNetwork(logif);
 			} catch (Exception e1) {
 				// TODO Auto-generated catch block
 				System.out.println("端口绑定失败，请检查是否有其他客户端在运行！");
@@ -76,14 +72,17 @@ class CLI implements MessageListener {
 						// System.out.print("\n等待命令:");
 						switch (System.in.read()) {
 						case 'i':
+						case 'I':
 							out.Send_Alive();
 							out.Output_Infomation();
 							break;
 						case 'q':
+						case 'Q':
+							System.out.println("开始注销...");
 							break labrun;
 						}
 					}// ONLINE
-					out.state = outerNetwork.State.STOP;
+					out.state = InternetNetwork.State.STOP;
 				} catch (IOException e) {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
@@ -91,9 +90,9 @@ class CLI implements MessageListener {
 				break;
 			case LOGOUT:
 				thd.start();
-				while (out.state != outerNetwork.State.ONLINE)
+				while (out.state != InternetNetwork.State.ONLINE)
 					;
-				out.state = outerNetwork.State.STOP;
+				out.state = InternetNetwork.State.STOP;
 				break;
 			}
 			break;
@@ -119,14 +118,14 @@ class CLI implements MessageListener {
 		options.addOption("i", "intetface", true, "指定拨号网卡名");
 		options.addOption("l", "list", false, "列出本机所有网卡名");
 		options.addOption("t", "type", true,
-				"登录类型 内网：i(inner) 外网：o(outter) 默认为内网");
+				"登录类型 内网：i(INTRANET) 外网：o(outter) 默认为内网");
 		options.addOption("a", "action", true,
 				"登录还是注销 登录：i(login) 注销：o(logout) 默认为登录");
 		options.addOption("u", "username", true, "指定用户名");
 		options.addOption("p", "password", true, "指定密码,如不指定则默认123456");
 		options.addOption("svr", "serverip", true, "外网登录服务器ip 默认自动搜索");// 为10.5.2.3
 		options.addOption("ds", "dhcpscript", true,
-				"内网拨号成功后自定义的自动获取IP脚本命令\nWindows下默认为\"ipconfig /renew *\"\nLinux默认为\"(待考虑)\" ");
+				"内网拨号成功后自定义的自动获取IP脚本命令\nWindows下默认为\"ipconfig /renew *\"\n其他系统无默认值，请自行配置！");
 		options.addOption("s", "srcmac", true, "指定源MAC地址，当你用别人的账号上网时需要指定");
 		options.addOption("d", "dstmac", true,
 				"指定目的MAC地址,默认为01-80-C2-00-00-03,一般不用指定");
@@ -178,10 +177,10 @@ class CLI implements MessageListener {
 			}
 
 			if (line.hasOption('t')) {
-				if (line.getOptionValue('t').matches("^i$|^inner$")) {
-					type = Type.inner;
-				} else if (line.getOptionValue('t').matches("^o$|^outer$")) {
-					type = Type.outer;
+				if (line.getOptionValue('t').matches("^i$|^INTRANET$")) {
+					type = Type.INTRANET;
+				} else if (line.getOptionValue('t').matches("^o$|^INTERNET$")) {
+					type = Type.INTERNET;
 				} else {
 					System.out.println("未知登录类型！");
 					return false;
@@ -254,8 +253,14 @@ class CLI implements MessageListener {
 
 			Properties props = System.getProperties();
 			if (props.getProperty("os.name").contains("indows")) {
-				logif.os = "windows";
+				logif.os = OS.Windows;
 				logif.dhcpScript = "ipconfig /renew *";
+			} else if (props.getProperty("os.name").contains("Linux")) {
+				logif.os = OS.Linux;
+				logif.dhcpScript = "";
+			} else {
+				logif.os = OS.Others;
+				logif.dhcpScript = "";
 			}
 
 			if (line.hasOption("ds")) {
@@ -276,23 +281,19 @@ class CLI implements MessageListener {
 		System.out.print(msg.msg);
 		switch (msg.type) {
 		case INNERSUCCESS:
-			if (logif.os.equals("windows")) {
-				System.out.println("获取IP地址...(" + logif.dhcpScript + ")");
-				try {
-					Runtime.getRuntime().exec(logif.dhcpScript);
-				} catch (IllegalArgumentException e) {
-					// TODO: handle exception
-					System.out.println("DHCP脚本运行错误！请手动设置获取IP");
-					return;
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-					return;
-				}
-				System.out.println("如不能上网请检查网卡是否设置为自动获取IP，DNS是否正确");
-			} else {
-				System.out.println("如采用DHCP，请运行DHCP客户端获取IP地址！");
+			System.out.println("获取IP地址...(" + logif.dhcpScript + ")");
+			try {
+				Runtime.getRuntime().exec(logif.dhcpScript);
+			} catch (IllegalArgumentException e) {
+				// TODO: handle exception
+				System.out.println("DHCP脚本运行错误！请手动设置获取IP");
+				return;
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+				return;
 			}
+			System.out.println("如不能上网请检查网卡是否设置为自动获取IP，DNS是否正确");
 			break;
 		case OUTTERSUCCESS:
 			System.out.println("注销请按q+回车，查询实时信息请按i+回车！");
