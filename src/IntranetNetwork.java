@@ -70,7 +70,7 @@ public class IntranetNetwork implements MessageAdapter, PacketReceiver {
 					break;
 				case Challenge:
 					ml.ReciveMessage(new Message(Message.Msgtype.MESSAGE,
-							"密码验证超时，是否源MAC不匹配？\n"));
+							"密码验证超时，可能交换机误检测为APR攻击，请使用系统修改MAC重试\n"));
 					return;
 				default:
 					startTime = System.currentTimeMillis();
