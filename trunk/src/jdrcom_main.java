@@ -19,7 +19,7 @@ public class jdrcom_main {
 //			}
 		} else {
 			GUI gui = new GUI(); // 图形界面版
-			gui.showMe();
+			gui.paint();
 		}
 	}
 }
