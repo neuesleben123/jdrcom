@@ -14,7 +14,7 @@ public class jdrcom_main {
 			CLI cli = new CLI(); // 命令行版
 			cli.run(args);
 //			if (false == cli.run(args)) {
-//				System.out.println("遇到错误，程序结束");
+//				System.out.princtln("遇到错误，程序结束");
 //				return;
 //			}
 		} else {
