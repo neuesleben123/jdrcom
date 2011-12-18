@@ -1,11 +1,17 @@
-import java.awt.*;
-import java.awt.Event.*;
+import java.awt.BorderLayout;
+import java.awt.Button;
+import java.awt.Choice;
+import java.awt.Color;
+import java.awt.FlowLayout;
+import java.awt.Frame;
+import java.awt.Label;
+import java.awt.TextField;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.ItemEvent;
 import java.awt.event.ItemListener;
-import java.awt.event.WindowListener;
 import java.awt.event.WindowEvent;
+import java.awt.event.WindowListener;
 import java.io.IOException;
 
 import jpcap.JpcapCaptor;
@@ -123,8 +129,10 @@ public class GUI implements ActionListener, WindowListener, ItemListener,
 		System.out.println("selected item : " + c.getSelectedItem());
 
 		for (NetworkInterface n : JpcapCaptor.getDeviceList())
-			if (n.description.equals(c.getSelectedItem()))
+			if (n.description.equals(c.getSelectedItem())) {
 				logif.nif = n;
+				break;
+			}
 	}
 
 	@Override
@@ -137,8 +145,8 @@ public class GUI implements ActionListener, WindowListener, ItemListener,
 		getpwd2 = textFieldpwd.getText();
 		logif.UserName = getuser1;
 		logif.PassWord = getpwd2;
-		
-		System.out.print(logif);
+
+		// System.out.print(logif);
 		if (cmd.equals("one")) {
 
 			IntranetNetwork in = new IntranetNetwork(logif);
