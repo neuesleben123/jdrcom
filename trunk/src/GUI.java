@@ -5,6 +5,7 @@ import java.awt.Color;
 import java.awt.FlowLayout;
 import java.awt.Frame;
 import java.awt.Label;
+import java.awt.TextArea;
 import java.awt.TextField;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -13,6 +14,7 @@ import java.awt.event.ItemListener;
 import java.awt.event.WindowEvent;
 import java.awt.event.WindowListener;
 import java.io.IOException;
+import java.util.Properties;
 
 import jpcap.JpcapCaptor;
 import jpcap.NetworkInterface;
@@ -20,6 +22,9 @@ import jpcap.NetworkInterface;
 public class GUI implements ActionListener, WindowListener, ItemListener,
 		MessageListener {
 	LoginInfo logif = new LoginInfo();
+
+	public static String Itemtemp;
+
 	TextField textFieldusername;
 	TextField textFieldpwd;
 	Choice ch;
@@ -27,19 +32,10 @@ public class GUI implements ActionListener, WindowListener, ItemListener,
 
 	public void paint() {
 		f1.addWindowListener(this); // 关闭窗口
-		// Frame f2 =new Frame("lixiang");
-
 		f1.setSize(100, 200);
 		// f1.setSize(100,200);
 		// f1.setLayout(new GridLayout(5,5));
-
 		f1.setBackground(Color.YELLOW);
-		Button b1 = new Button("one");
-		Button b2 = new Button("two");
-		Button b3 = new Button("intramural logout");
-		Button b4 = new Button("internet logout");
-		Button b5 = new Button("five");
-
 		BorderLayout e = new BorderLayout(0, 0);
 
 		e.setHgap(5);
@@ -47,6 +43,11 @@ public class GUI implements ActionListener, WindowListener, ItemListener,
 
 		f1.setLayout(e);
 		f1.setLayout(new FlowLayout());
+		Button b1 = new Button("one");
+		Button b2 = new Button("two");
+		Button b3 = new Button("intramural logout");
+		Button b4 = new Button("internet logout");
+		Button b5 = new Button("five");
 
 		// FlowLayout f=new FlowLayout(FlowLayout.RIGHT,10,20);
 
@@ -81,6 +82,10 @@ public class GUI implements ActionListener, WindowListener, ItemListener,
 		// int a[][]={{0,0,1,1}};
 		f1.add(textFieldusername);
 		f1.add(textFieldpwd);
+
+		TextArea area = new TextArea(6, 25);
+
+		f1.add(area);
 
 		ch = new Choice();
 		ch.addItemListener(new GUI());
@@ -124,18 +129,18 @@ public class GUI implements ActionListener, WindowListener, ItemListener,
 	// combox
 
 	public void itemStateChanged(ItemEvent e) {
-		Choice c = (Choice) e.getSource();
-		System.out.println("selected item index: " + c.getSelectedIndex());
-		System.out.println("selected item : " + c.getSelectedItem());
+		if (e.getStateChange() == e.SELECTED) { // 这里控制为只处理一次
+			// System.out.println( "选中了 ");
+			Choice c = (Choice) e.getSource();
+			Itemtemp = c.getSelectedItem();
+		}
 
-		for (NetworkInterface n : JpcapCaptor.getDeviceList())
-			if (n.description.equals(c.getSelectedItem())) {
-				logif.nif = n;
-				break;
-			}
+		// System.out.println("selected item index: " + c.getSelectedIndex());
+		// System.out.println("selected item : " + c.getSelectedItem());
+
 	}
 
-	@Override
+	// @Override
 	public void actionPerformed(ActionEvent e) {
 		// TODO Auto-generated method stub
 
@@ -146,7 +151,23 @@ public class GUI implements ActionListener, WindowListener, ItemListener,
 		logif.UserName = getuser1;
 		logif.PassWord = getpwd2;
 
-		// System.out.print(logif);
+		for (NetworkInterface n : JpcapCaptor.getDeviceList())
+			if (n.description.equals(Itemtemp))
+				logif.nif = n;
+		logif.src_mac = logif.nif.mac_address;
+		Properties props = System.getProperties();
+		if (props.getProperty("os.name").contains("indows")) {
+			logif.os = OS.Windows;
+			logif.dhcpScript = "ipconfig /renew *";
+		} else if (props.getProperty("os.name").contains("Linux")) {
+			logif.os = OS.Linux;
+			logif.dhcpScript = "";
+		} else {
+			logif.os = OS.Others;
+			logif.dhcpScript = "";
+		}
+		System.out.print(logif);
+
 		if (cmd.equals("one")) {
 
 			IntranetNetwork in = new IntranetNetwork(logif);
