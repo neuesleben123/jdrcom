@@ -102,10 +102,12 @@ public class IntranetNetwork implements MessageAdapter, PacketReceiver {
 					ps.sendPacket(tmp);
 					state = State.Identity;
 					startTime = System.currentTimeMillis();
-					ml.ReciveMessage(new Message(Message.Msgtype.MESSAGE, "发送用户名\n"));
+					ml.ReciveMessage(new Message(Message.Msgtype.MESSAGE,
+							"发送用户名\n"));
 					break;
 				case _802dot1XPacket.EAP_REQUEST_NOTIFICATION:
-					ml.ReciveMessage(new Message(Message.Msgtype.MESSAGE, "notic"));
+					ml.ReciveMessage(new Message(Message.Msgtype.MESSAGE,
+							"notic"));
 					break;
 				case _802dot1XPacket.EAP_REQUEST_MD5_CHALLENGE:
 					tmp.ConvertToMD5ChallengeResponse(logif.UserName,
@@ -113,7 +115,8 @@ public class IntranetNetwork implements MessageAdapter, PacketReceiver {
 					ps.sendPacket(tmp);
 					state = State.Challenge;
 					startTime = System.currentTimeMillis();
-					ml.ReciveMessage(new Message(Message.Msgtype.MESSAGE, "发送密码\n"));
+					ml.ReciveMessage(new Message(Message.Msgtype.MESSAGE,
+							"发送密码\n"));
 					break;
 				}
 				break;
@@ -123,7 +126,8 @@ public class IntranetNetwork implements MessageAdapter, PacketReceiver {
 				pc.breakLoop();
 				break;
 			case _802dot1XPacket.EAP_CODE_SUCCESS:
-				ml.ReciveMessage(new Message(Message.Msgtype.INNERSUCCESS, "内网登陆成功!\n"));
+				ml.ReciveMessage(new Message(Message.Msgtype.INNERSUCCESS,
+						"内网登陆成功!\n"));
 				// 增加断线重拨 ...
 
 				pc.breakLoop();
@@ -143,6 +147,10 @@ public class IntranetNetwork implements MessageAdapter, PacketReceiver {
 		ps.sendPacket(start);
 		ml.ReciveMessage(new Message(Message.Msgtype.MESSAGE, "内网注销成功!\n"));
 		return false;
+	}
+
+	public void run() {
+		Start();
 	}
 
 	@Override
