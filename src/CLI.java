@@ -46,7 +46,7 @@ class CLI implements MessageListener {
 			in.addMessageListener(this);
 			switch (action) {
 			case LOGIN:
-				in.Start();
+				in.run();
 				break;
 			case LOGOUT:
 				in.logoff();
